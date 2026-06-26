@@ -1,0 +1,52 @@
+name: 金价每小时播报
+
+on:
+  schedule:
+    # 北京时间工作日 9:00-15:00 整点 → UTC 1,2,3,5,6,7 点，周一到周五
+    - cron: "0 1,2,3,5,6,7 * * 1-5"
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 生成配置文件
+        run: |
+          python -c "
+          import json, os
+          config = {
+              'notification': {
+                  'type': 'wxpusher',
+                  'wxpusher_app_token': os.environ['WXPUSHER_APP_TOKEN'],
+                  'wxpusher_uids': json.loads(os.environ['WXPUSHER_UIDS']),
+                  'wxpusher_content_type': 2,
+              },
+              'threshold': 0.05,
+              'selected_brands': ['周大福', '老庙黄金', '周六福'],
+              'trading_hours': {
+                  'start': '09:00',
+                  'end': '15:00',
+                  'weekdays_only': True,
+              },
+          }
+          with open('config.json', 'w') as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+          print('config.json 生成成功')
+          "
+        env:
+          WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
+          WXPUSHER_UIDS: ${{ secrets.WXPUSHER_UIDS }}
+
+      - name: 执行金价推送
+        run: python gold_monitor.py

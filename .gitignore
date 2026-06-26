@@ -1,0 +1,5 @@
+config.json
+.workbuddy/
+__pycache__/
+*.pyc
+history.json
