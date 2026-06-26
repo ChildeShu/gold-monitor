@@ -21,6 +21,14 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
+      - name: 恢复历史数据缓存
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: gold-history-${{ github.run_id }}
+          restore-keys: |
+            gold-history-
+
       - name: 生成配置文件
         run: |
           python -c "
@@ -52,3 +60,10 @@ jobs:
         run: python gold_monitor.py --force
         env:
           TZ: Asia/Shanghai
+
+      # 第二次 cache save 用新 key 保存更新后的 history.json
+      - name: 更新历史数据缓存
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: gold-history-${{ github.run_id }}
