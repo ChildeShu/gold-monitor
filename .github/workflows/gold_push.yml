@@ -49,4 +49,6 @@ jobs:
           WXPUSHER_UIDS: ${{ secrets.WXPUSHER_UIDS }}
 
       - name: 执行金价推送
-        run: python gold_monitor.py
+        run: python gold_monitor.py --force
+        env:
+          TZ: Asia/Shanghai
