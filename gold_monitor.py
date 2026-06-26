@@ -70,6 +70,10 @@ def save_history(history):
         json.dump(trimmed, f, ensure_ascii=False, indent=2)
 
 
+SILENT_START = time(21, 0)
+SILENT_END = time(8, 30)
+SILENT_THRESHOLD = 10  # 静默时段大幅波动阈值（元）
+
 def is_trading_time(now=None):
     """判断当前是否在交易时段（周一至周五 9:00-15:00）"""
     if now is None:
@@ -78,6 +82,14 @@ def is_trading_time(now=None):
         return False
     t = now.time()
     return TRADING_DAY_START <= t <= TRADING_DAY_END
+
+
+def is_silent_hours(now=None):
+    """判断是否在静默时段（每日 21:00-次日 08:30）"""
+    if now is None:
+        now = datetime.now()
+    t = now.time()
+    return t >= SILENT_START or t <= SILENT_END
 
 
 # ═══════════════════════════════════════════════════════
@@ -676,9 +688,13 @@ def main():
     if is_test:
         print(f"  [测试模式]")
     elif not is_trading_time(now) and not force:
-        print(f"  ⏸️  非交易时段（周一至五 9:00-15:00），跳过")
-        print(f"{'='*55}\n")
-        return
+        # 非交易时段但静默时段仍可能推送（大幅波动时）
+        if not is_silent_hours(now):
+            print(f"  ⏸️  非交易时段且非静默时段，跳过")
+            print(f"{'='*55}\n")
+            return
+        # 静默时段：继续获取数据，在推送判断中决定是否发送
+        print(f"  🌙 静默时段，仅大幅波动时推送")
     print(f"{'='*55}\n")
 
     config = load_config()
@@ -744,6 +760,7 @@ def main():
     # ── 判断推送 ──
     should_push = False
     reason = ""
+    in_silent = is_silent_hours(now)
 
     if is_test:
         should_push = True
@@ -755,33 +772,69 @@ def main():
         should_push = True
         reason = "首次运行"
     else:
-        # 检查是否有变化
         threshold = config.get("threshold", 0.05)
         changes = []
+        big_changes = []  # ≥10元的大幅波动
 
         if intl_spot and prev_intl:
             diff = abs(intl_spot["cny_price"] - prev_intl.get("cny_price", 0))
             if diff >= threshold:
                 changes.append(f"国际金价 {diff:+.2f}")
+            if diff >= SILENT_THRESHOLD:
+                big_changes.append(f"国际金价 波动 {diff:+.1f}元")
+
         if au9999 and prev_au:
-            diff = abs(au9999["price"] - prev_au.get("price", 0))
+            p = au9999["price"]
+            pp = prev_au.get("price", 0) if prev_au.get("price") else p
+            diff = abs(p - pp)
             if diff >= threshold:
                 changes.append(f"AU9999 {diff:+.2f}")
+            if diff >= SILENT_THRESHOLD:
+                big_changes.append(f"AU9999 波动 {diff:+.1f}元")
+
         if boshi_etf and prev_etf:
-            diff = abs(boshi_etf["price"] - prev_etf.get("price", 0))
-            if diff >= 0.001:
-                changes.append(f"博时ETF {diff:+.4f}")
+            diff_etf = abs(boshi_etf["price"] - prev_etf.get("price", 0))
+            if diff_etf >= 0.001:
+                changes.append(f"博时ETF {diff_etf:+.4f}")
+            diff_gold = abs(boshi_etf["price"] * 100 - prev_etf.get("price", 0) * 100)
+            if diff_gold >= SILENT_THRESHOLD:
+                big_changes.append(f"博时黄金ETF 波动 {diff_gold:+.1f}元")
+
         if gold_funds and prev_funds:
             for code, f in gold_funds.items():
                 p = prev_funds.get(code, {}).get("gold_price")
-                if p is not None and abs(f["gold_price"] - p) >= 0.05:
-                    changes.append(f"{f['name']} 克价 {f['gold_price']-p:+.2f}")
+                if p is not None:
+                    diff = abs(f["gold_price"] - p)
+                    if diff >= 0.05:
+                        changes.append(f"{f['name']} 克价 {f['gold_price']-p:+.2f}")
+                    if diff >= SILENT_THRESHOLD:
+                        big_changes.append(f"{f['name']} 波动 {diff:+.1f}元")
 
-        if changes:
-            should_push = True
-            reason = f"变化: {', '.join(changes)}"
+        if brand_prices and prev_brands:
+            for b, tp in brand_prices.items():
+                pp = prev_brands.get(b)
+                if pp is not None:
+                    diff = abs(tp - pp)
+                    if diff >= SILENT_THRESHOLD:
+                        big_changes.append(f"{b} 波动 {diff:+.1f}元")
+
+        if in_silent:
+            # 静默时段：只在大幅波动时推送
+            if big_changes:
+                should_push = True
+                reason = f"静默时段大幅波动: {', '.join(big_changes)}"
+            else:
+                reason = "静默时段无大幅波动，跳过"
         else:
-            reason = "价格无变化"
+            # 正常时段：有变化就推送
+            if changes:
+                should_push = True
+                reason = f"变化: {', '.join(changes)}"
+            else:
+                reason = "价格无变化"
+
+    if in_silent and not is_test:
+        print(f"  [静默时段 {SILENT_START.strftime('%H:%M')}-{SILENT_END.strftime('%H:%M')}]")
 
     print(f"\n[推送] {reason}")
 
