@@ -506,7 +506,7 @@ def build_notification(au9999, boshi_etf, gold_funds, intl_spot, brand_prices,
     )
     lines.append(
         f'<div style="font-size:15px;font-weight:500;color:#8b7355">'
-        f'金价播报</div>'
+        f'金价</div>'
     )
     lines.append(
         f'<div style="font-size:12px;margin-top:4px;color:#c4b99a">'
@@ -687,7 +687,7 @@ def main():
     print(f"  🪙 金价播报 — {now.strftime('%Y-%m-%d %H:%M')}")
     if is_test:
         print(f"  [测试模式]")
-    elif not is_trading_time(now) and not force:
+    elif not is_trading_time(now):
         # 非交易时段但静默时段仍可能推送（大幅波动时）
         if not is_silent_hours(now):
             print(f"  ⏸️  非交易时段且非静默时段，跳过")
@@ -765,13 +765,12 @@ def main():
     if is_test:
         should_push = True
         reason = "测试"
-    elif force:
+    elif force and not in_silent:
+        # 交易时段强制推送
         should_push = True
         reason = "强制推送"
-    elif not prev_data:
-        should_push = True
-        reason = "首次运行"
     else:
+        # 其余情况（含 force+静默、非force交易时段、非force静默）都走变化判断
         threshold = config.get("threshold", 0.05)
         changes = []
         big_changes = []  # ≥10元的大幅波动
@@ -818,7 +817,14 @@ def main():
                     if diff >= SILENT_THRESHOLD:
                         big_changes.append(f"{b} 波动 {diff:+.1f}元")
 
-        if in_silent:
+        if not prev_data:
+            # 首次运行：静默时段不推送
+            if in_silent:
+                reason = "静默时段首次运行，跳过"
+            else:
+                should_push = True
+                reason = "首次运行"
+        elif in_silent:
             # 静默时段：只在大幅波动时推送
             if big_changes:
                 should_push = True
@@ -839,7 +845,7 @@ def main():
     print(f"\n[推送] {reason}")
 
     if should_push:
-        title = f"金价{now.strftime('%m-%d %H:00')}"
+        title = "金价"
 
         content = build_notification(
             au9999, boshi_etf, gold_funds, intl_spot, brand_prices,
