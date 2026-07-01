@@ -1,0 +1,73 @@
+name: 金价攒数据（每10分钟）
+
+on:
+  schedule:
+    # 北京时间 09:00-15:00，每 10 分钟攒一次数据
+    # UTC 1-7 点，每 10 分钟，周一到周五
+    - cron: "*/10 1 * * 1-5"
+    - cron: "*/10 2 * * 1-5"
+    - cron: "*/10 3 * * 1-5"
+    - cron: "*/10 4 * * 1-5"
+    - cron: "*/10 5 * * 1-5"
+    - cron: "*/10 6 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 生成配置文件
+        run: |
+          python -c "
+          import json, os
+          config = {
+              'notification': {
+                  'type': 'wxpusher',
+                  'wxpusher_app_token': os.environ['WXPUSHER_APP_TOKEN'],
+                  'wxpusher_uids': json.loads(os.environ['WXPUSHER_UIDS']),
+                  'wxpusher_content_type': 2,
+              },
+              'threshold': 0.05,
+              'selected_brands': ['周大福', '老庙黄金', '周六福'],
+          }
+          with open('config.json', 'w') as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+          "
+        env:
+          WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
+          WXPUSHER_UIDS: ${{ secrets.WXPUSHER_UIDS }}
+
+      - name: 仅保存数据（不推送）
+        run: python gold_monitor.py --save-only
+        env:
+          TZ: Asia/Shanghai
+
+      - name: 推送 history.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add history.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: save-only $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+            git push
+          else
+            echo "No history changes"
+          fi
+        env:
+          TZ: Asia/Shanghai

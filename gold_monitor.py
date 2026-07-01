@@ -64,7 +64,8 @@ def load_history():
 
 
 def save_history(history):
-    keys = sorted(history.keys(), reverse=True)[:180]  # 保留180条(足够比较)
+    """保留最近 7 天数据（save-only 模式每 10 分钟一条，约 100 条）"""
+    keys = sorted(history.keys(), reverse=True)[:500]
     trimmed = {k: history[k] for k in keys}
     trimmed = dict(sorted(trimmed.items()))
     with open(HISTORY_PATH, "w", encoding="utf-8") as f:
@@ -744,9 +745,10 @@ def generate_chart_html(output_path=None):
         print("  [图表] 无历史数据，跳过生成")
         return None
     
-    # 取最近7天数据
+    # 取最近7天数据（save-only 模式每10分钟一条，约 7×24×6 = 1008 条，取全部）
     all_keys = sorted(history.keys())
-    recent_keys = all_keys[-28:]  # 最多28条（7天×4次/天）
+    # 取最近 1000 条，保证图表不卡
+    recent_keys = all_keys[-1000:] if len(all_keys) > 1000 else all_keys
     recent_data = {k: history[k] for k in recent_keys}
     
     # 读取模板
@@ -903,21 +905,27 @@ def find_previous_key(history, current_key):
 def main():
     force = "--force" in sys.argv
     is_test = "--test" in sys.argv
+    save_only = "--save-only" in sys.argv
 
     now = datetime.now()
-    ts_key = now.strftime("%Y-%m-%d %H:00")
+    # save-only 模式使用精确到分钟的时间戳（如 2026-07-01 19:10）
+    # 非 save-only 模式使用整点时间戳（保持原有逻辑）
+    if save_only:
+        ts_key = now.strftime("%Y-%m-%d %H:%M")
+    else:
+        ts_key = now.strftime("%Y-%m-%d %H:00")
 
     print(f"\n{'='*55}")
     print(f"  🪙 金价播报 — {now.strftime('%Y-%m-%d %H:%M')}")
-    if is_test:
+    if save_only:
+        print(f"  [仅保存数据模式]")
+    elif is_test:
         print(f"  [测试模式]")
     elif not is_trading_time(now):
-        # 非交易时段但静默时段仍可能推送（大幅波动时）
         if not is_silent_hours(now):
             print(f"  ⏸️  非交易时段且非静默时段，跳过")
             print(f"{'='*55}\n")
             return
-        # 静默时段：继续获取数据，在推送判断中决定是否发送
         print(f"  🌙 静默时段，仅大幅波动时推送")
     print(f"{'='*55}\n")
 
@@ -980,6 +988,14 @@ def main():
         "brands": brand_prices,
     }
     save_history(history)
+    print(f"  [数据] 已保存 {ts_key}")
+
+    # ── --save-only 模式：仅保存，不推送 ──
+    if save_only:
+        print(f"\n{'='*55}")
+        print(f"  ✅ 仅保存模式完成")
+        print(f"{'='*55}\n")
+        return
 
     # ── 判断推送 ──
     should_push = False
