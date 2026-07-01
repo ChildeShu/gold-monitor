@@ -272,26 +272,55 @@ def fetch_gold_funds():
 
 
 def fetch_intl_spot():
-    """获取国际现货金价（美元/盎司 + 人民币/克换算）"""
+    """获取国际现货金价（美元/盎司 + 人民币/克换算）
+    主源：东方财富 XAU（伦敦金/美元）
+    辅源：dwo.cc 用于人民币/克换算，以及美元价备用
+    """
+    result = {
+        "name": "国际黄金现货",
+        "intl_price": 0.0,
+        "intl_unit": "美元/盎司",
+        "cny_price": 0.0,
+        "update_time": "",
+        "prev_close": None,
+    }
+
+    # 1. 先获取东方财富 XAU（更准确的美元/盎司）
+    try:
+        em_fields = "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f170"
+        em_url = f"https://push2.eastmoney.com/api/qt/stock/get?secid=122.XAU&fields={em_fields}"
+        r = requests.get(em_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        em_data = r.json()
+        em = em_data.get("data", {})
+        if em.get("f43") is not None:
+            result["intl_price"] = round(float(em.get("f43", 0)) / 100, 2)
+            result["prev_close"] = round(float(em.get("f60", 0)) / 100, 2) if em.get("f60") else None
+            result["update_time"] = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        print(f"  [WARN] 东方财富XAU: {e}")
+
+    # 2. 从 dwo.cc 获取人民币/克换算价，以及备用美元价
     try:
         r = requests.get(API_BRAND_BACKUP, timeout=15)
         data = r.json()
-        if data.get("code") != 200:
-            return None
-        futures = data["data"].get("futures", [])
-        for f in futures:
-            if "黄金" in f.get("name", ""):
-                return {
-                    "name": f["name"],
-                    "intl_price": float(f.get("trade_price", 0)),
-                    "intl_unit": f.get("trade_unit", "美元/盎司"),
-                    "cny_price": float(f.get("convert_price", 0)),
-                    "update_time": f.get("update_time", ""),
-                }
-        return None
+        if data.get("code") == 200:
+            futures = data["data"].get("futures", [])
+            for f in futures:
+                if "黄金" in f.get("name", ""):
+                    cny_price = float(f.get("convert_price", 0))
+                    if cny_price > 0:
+                        result["cny_price"] = cny_price
+                    # 如果东方财富没有拿到，才用 dwo.cc 的美元价
+                    if result["intl_price"] <= 0:
+                        result["intl_price"] = float(f.get("trade_price", 0))
+                    result["update_time"] = f.get("update_time", result["update_time"])
+                    break
     except Exception as e:
-        print(f"  [ERR] 国际金价: {e}")
-        return None
+        print(f"  [WARN] dwo.cc国际金价: {e}")
+
+    if result["intl_price"] > 0 and result["cny_price"] > 0:
+        return result
+    return None
 
 
 def fetch_brand_gold():

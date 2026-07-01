@@ -4,12 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <title>金价走势 · 近一周</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
-</script>
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js">
-</script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js">
-</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{
@@ -29,13 +26,18 @@ body{
   display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto;
   background:#1a1a2e;position:sticky;top:82px;z-index:99;
   -webkit-overflow-scrolling:touch;
+  scroll-snap-type:x mandatory;
+  scrollbar-width:none;
+  scroll-behavior:smooth;
 }
+.tabs::-webkit-scrollbar{display:none}
 .tab{
   flex-shrink:0;padding:8px 16px;border-radius:20px;
   font-size:13px;font-weight:500;cursor:pointer;
   background:#16213e;color:#888;border:1px solid #2a2a4a;
   transition:all 0.2s;white-space:nowrap;
   -webkit-tap-highlight-color:transparent;
+  scroll-snap-align:center;
 }
 .tab.active{background:#d4af37;color:#1a1a2e;border-color:#d4af37;font-weight:600}
 
@@ -54,6 +56,42 @@ body{
 .legend-item .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .legend-item.active{border-color:#d4af37;background:#1e2a40}
 .legend-item.dimmed{opacity:0.35}
+
+.quote-bar{
+  background:#16213e;border:1px solid #2a2a4a;border-radius:14px;
+  margin:8px 12px 0;padding:14px 16px;
+  box-shadow:0 4px 20px rgba(0,0,0,0.35);
+  position:sticky;top:178px;z-index:97;
+}
+.quote-bar .date-row{
+  display:flex;align-items:baseline;justify-content:space-between;
+  margin-bottom:12px;
+}
+.quote-bar .date{
+  font-size:18px;font-weight:700;color:#d4af37;letter-spacing:0.5px;
+}
+.quote-bar .date-hint{
+  font-size:11px;color:#666;
+}
+.quote-bar .prices{
+  display:flex;gap:8px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;padding-bottom:4px;
+}
+.quote-bar .prices::-webkit-scrollbar{display:none}
+.quote-card{
+  flex-shrink:0;min-width:110px;max-width:160px;
+  background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;
+  padding:10px 12px;position:relative;overflow:hidden;
+}
+.quote-card .name{
+  font-size:11px;color:#888;margin-bottom:6px;display:flex;align-items:center;gap:5px;
+}
+.quote-card .name .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.quote-card .price{
+  font-size:18px;font-weight:700;color:#e0e0e0;line-height:1;
+}
+.quote-card .price small{font-size:11px;font-weight:400;color:#888;margin-left:2px}
 
 .chart-container{
   position:relative;width:100%;height:420px;
@@ -96,13 +134,15 @@ canvas{width:100%!important;height:100%!important}
 
 <div class="tabs" id="tabs"></div>
 <div class="legend-wrap" id="legend"></div>
+<div class="quote-bar" id="quoteBar">
+  <div class="date-row">
+    <div class="date" id="quoteDate">--</div>
+    <div class="date-hint">← 在图表上滑动查看历史数据</div>
+  </div>
+  <div class="prices" id="quotePrices"></div>
+</div>
 <div class="chart-container">
   <canvas id="chart"></canvas>
-</div>
-<div class="tooltip-native" id="tooltip">
-  <div class="date" id="tipDate"></div>
-  <div class="values" id="tipValues"></div>
-  <div class="swipe-hint">← 左右滑动查看各时间点 →</div>
 </div>
 <div class="footer">
   数据来源 东方财富 · dwo.cc · ruseo.cn · 新浪财经<br>
@@ -117,8 +157,8 @@ var GROUPS = {
   "国际": {
     label: "🌍 国际",
     series: [
-      {key:"intl_spot_cny", label:"伦敦金现(人民币)", unit:"元/克", color:"#ff6b6b", decimals:2, yAxisID:"y"},
-      {key:"intl_spot_usd", label:"伦敦金现(美元)", unit:"美元/盎司", color:"#ffa502", decimals:1, yAxisID:"y1"}
+      {key:"intl_spot_cny", label:"国际金价(人民币)", unit:"元/克", color:"#ff6b6b", decimals:2, yAxisID:"y"},
+      {key:"intl_spot_usd", label:"国际金价(美元)", unit:"美元/盎司", color:"#ffa502", decimals:1, yAxisID:"y1"}
     ]
   },
   "投资": {
@@ -304,22 +344,13 @@ function renderChart(groupName) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: {mode:"index",intersect:false},
+      interaction: {mode:"index", axis:"x", intersect:false},
       plugins: {
         legend: {display:false},
         tooltip: {
-          enabled: true, mode:"index", intersect:false,
-          backgroundColor:"rgba(22,33,62,0.95)",
-          titleColor:"#d4af37", bodyColor:"#e0e0e0",
-          borderColor:"#d4af37", borderWidth:1, padding:12,
-          callbacks: {
-            label: function(ctx) {
-              var ds = ctx.dataset;
-              var val = ctx.parsed.y;
-              return ds.label + ": " + val.toFixed(ds.decimals||2) + " " + (ds.unit||"");
-            }
-          }
+          enabled: false  /* 关闭原生tooltip，用底部面板代替 */
         },
+        crosshair: false,  /* 不通过第三方插件，自己画竖线 */
         zoom: {
           pan: {enabled:true, mode:"x"},
           zoom: {wheel:{enabled:true}, pinch:{enabled:true}, mode:"x"}
@@ -343,11 +374,49 @@ function renderChart(groupName) {
         var evt = args.event;
         if (!evt || !evt.native) return;
         if (evt.native.type === "touchmove" || evt.native.type === "mousemove") {
+          /* 把鼠标/触摸坐标转换为 canvas 坐标 */
+          var rect = chart.canvas.getBoundingClientRect();
+          var x = (evt.native.touches ? evt.native.touches[0].clientX : evt.native.clientX) - rect.left;
+          x = Math.max(chart.scales.x.left, Math.min(x, chart.scales.x.right));
+          chart._crosshairX = x;
+          chart.draw();
+
           var points = chart.getElementsAtEventForMode(evt.native, "index", {intersect:false}, false);
           if (points.length > 0) {
             showNativeTooltip(points[0].index, chart.data);
           }
         }
+        if (evt.native.type === "touchend" || evt.native.type === "mouseleave") {
+          setTimeout(function() {
+            document.getElementById("tooltip").classList.remove("show");
+          }, 1500);
+          chart._crosshairX = null;
+        }
+      }
+    },
+    {
+      id: "crosshairLine",
+      afterDraw: function(chart) {
+        var x = chart._crosshairX;
+        if (x === null || x === undefined) return;
+        /* 用第一个可见数据集的 yAxisID 来找到对应的 y scale */
+        var yScale = null;
+        for (var i = 0; i < chart.data.datasets.length; i++) {
+          var meta = chart.getDatasetMeta(i);
+          if (!meta.hidden) { yScale = chart.scales[meta.yAxisID]; break; }
+        }
+        if (!yScale) yScale = chart.scales["y"];
+        if (!yScale) return;
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, yScale.top);
+        ctx.lineTo(x, yScale.bottom);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "#d4af37";
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
       }
     }]
   });
@@ -362,6 +431,8 @@ function renderChart(groupName) {
   });
 
   highlightedSeries = null;
+
+  showLatestQuote();
 }
 
 function renderLegend(groupName) {
@@ -426,12 +497,39 @@ function highlightSeries(key) {
 }
 
 var tooltipTimeout;
-function showNativeTooltip(index, chartData) {
+function updateQuoteBar(index) {
   clearTimeout(tooltipTimeout);
   var data = parseData();
   var rawLabel = data.rawLabels[index];
   var group = GROUPS[currentGroup];
 
+  document.getElementById("quoteDate").textContent = rawLabel;
+
+  var html = "";
+  group.series.forEach(function(s) {
+    var val = data.datasets[s.key][index];
+    if (val !== null && val !== undefined) {
+      html += '<div class="quote-card">' +
+        '<div class="name"><span class="dot" style="background:' + s.color + '"></span>' + s.label + '</div>' +
+        '<div class="price">' + val.toFixed(s.decimals) + '<small>' + s.unit + '</small></div>' +
+      '</div>';
+    }
+  });
+  document.getElementById("quotePrices").innerHTML = html;
+
+  /* 3秒后恢复最新数据 */
+  tooltipTimeout = setTimeout(function() {
+    showLatestQuote();
+  }, 4000);
+}
+
+function showNativeTooltip(index, chartData) {
+  clearTimeout(tooltipTimeout);
+  updateQuoteBar(index);
+  /* 同时保留底部面板，用于显示完整信息 */
+  var data = parseData();
+  var rawLabel = data.rawLabels[index];
+  var group = GROUPS[currentGroup];
   var html = "";
   group.series.forEach(function(s) {
     var val = data.datasets[s.key][index];
@@ -439,14 +537,19 @@ function showNativeTooltip(index, chartData) {
       html += '<div class="val-chip"><span class="c-dot" style="background:' + s.color + '"></span>' + s.label + ': <b>' + val.toFixed(s.decimals) + ' ' + s.unit + '</b></div>';
     }
   });
-
   document.getElementById("tipDate").textContent = rawLabel;
   document.getElementById("tipValues").innerHTML = html;
   document.getElementById("tooltip").classList.add("show");
-
   tooltipTimeout = setTimeout(function() {
     document.getElementById("tooltip").classList.remove("show");
   }, 3000);
+}
+
+function showLatestQuote() {
+  var data = parseData();
+  var lastIndex = data.rawLabels.length - 1;
+  updateQuoteBar(lastIndex);
+  document.getElementById("quoteDate").textContent = data.rawLabels[lastIndex] + " · 最新";
 }
 
 function init() {
@@ -462,10 +565,28 @@ function init() {
   document.getElementById("genTime").textContent = "生成时间 " + GEN_TIME;
 
   renderChart("国际");
+  showLatestQuote();
 
   document.getElementById("chart").addEventListener("dblclick", function() {
     highlightSeries(null);
   });
+
+  /* Tab 区域滑动切换手势 */
+  var tabEl = document.getElementById("tabs");
+  if (tabEl && typeof Hammer !== "undefined") {
+    var hammer = new Hammer(tabEl, {threshold:30, velocity:0.3});
+    hammer.get("swipe").set({ direction: Hammer.DIRECTION_HORIZONTAL });
+    hammer.on("swipeleft swiperight", function(ev) {
+      var keys = Object.keys(GROUPS);
+      var idx = keys.indexOf(currentGroup);
+      if (ev.type === "swipeleft") {
+        idx = (idx + 1) % keys.length;
+      } else {
+        idx = (idx - 1 + keys.length) % keys.length;
+      }
+      renderChart(keys[idx]);
+    });
+  }
 }
 
 init();
