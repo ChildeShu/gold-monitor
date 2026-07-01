@@ -14,6 +14,7 @@
 """
 
 import json
+import os
 import sys
 import time as _time
 from datetime import datetime, time
@@ -641,6 +642,39 @@ def build_notification(au9999, boshi_etf, gold_funds, intl_spot, brand_prices,
 
     lines.append('</div>')  # end content
 
+    # ── K线图链接 ──
+    chart_url = os.environ.get("CHART_URL", "")
+    if not chart_url:
+        # 尝试自动推断 GitHub Pages URL
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "config", "--get", "remote.origin.url"],
+                cwd=str(SCRIPT_DIR), capture_output=True, text=True, timeout=5
+            )
+            remote = result.stdout.strip()
+            if "github.com" in remote:
+                if remote.startswith("git@"):
+                    repo = remote.split("github.com:")[1].replace(".git", "")
+                else:
+                    repo = remote.split("github.com/")[1].replace(".git", "")
+                parts = repo.split("/")
+                if len(parts) == 2:
+                    chart_url = f"https://{parts[0]}.github.io/{parts[1]}/"
+        except Exception:
+            pass
+
+    if chart_url:
+        lines.append(
+            '<div style="padding:8px 16px 0;text-align:center">'
+            f'<a href="{chart_url}" style="display:inline-block;padding:8px 20px;'
+            f'background:linear-gradient(135deg,#d4af37,#b8942e);color:#fff;'
+            f'border-radius:20px;font-size:13px;text-decoration:none;font-weight:500;'
+            f'box-shadow:0 2px 8px rgba(212,175,55,0.3)">'
+            f'📈 查看一周走势图</a>'
+            '</div>'
+        )
+
     # ── 底部 ──
     lines.append(
         '<div style="padding:10px 16px 14px;text-align:center;font-size:11px;color:#c4b99a">'
@@ -666,6 +700,166 @@ def _next_hour(now):
 # ═══════════════════════════════════════════════════════
 #  主流程
 # ═══════════════════════════════════════════════════════
+
+def generate_chart_html(output_path=None):
+    """从 history.json 生成交互式 K 线图 HTML。
+    
+    返回生成的 HTML 文件路径。
+    """
+    import json as _json
+    from datetime import datetime as _dt
+    
+    history = load_history()
+    if not history:
+        print("  [图表] 无历史数据，跳过生成")
+        return None
+    
+    # 取最近7天数据
+    all_keys = sorted(history.keys())
+    recent_keys = all_keys[-28:]  # 最多28条（7天×4次/天）
+    recent_data = {k: history[k] for k in recent_keys}
+    
+    # 读取模板
+    template_path = SCRIPT_DIR / "chart_template.html"
+    if not template_path.exists():
+        print(f"  [图表] 模板文件不存在: {template_path}")
+        return None
+    
+    template = template_path.read_text(encoding="utf-8")
+    
+    # 注入数据
+    data_json = _json.dumps(recent_data, ensure_ascii=False, indent=2)
+    gen_time = _dt.now().strftime("%Y-%m-%d %H:%M")
+    
+    html = template.replace("__DATA_PLACEHOLDER__", data_json)
+    html = html.replace("__GEN_TIME__", gen_time)
+    
+    # 写入输出
+    if output_path is None:
+        output_path = SCRIPT_DIR / "chart_output.html"
+    else:
+        output_path = Path(output_path)
+    
+    output_path.write_text(html, encoding="utf-8")
+    print(f"  [图表] 已生成: {output_path}")
+    return str(output_path)
+
+
+def deploy_chart_to_gh_pages(html_path):
+    """将 K 线图 HTML 部署到 GitHub Pages (gh-pages 分支)。
+    
+    通过写入文件到本地，然后推送到 gh-pages 分支实现。
+    返回公开访问 URL。
+    """
+    import subprocess
+    import os
+    from datetime import datetime as _dt
+    
+    html_file = Path(html_path)
+    if not html_file.exists():
+        print(f"  [部署] 文件不存在: {html_path}")
+        return None
+    
+    repo_dir = str(SCRIPT_DIR)
+    
+    # 获取 GitHub 仓库信息
+    try:
+        result = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=10
+        )
+        remote_url = result.stdout.strip()
+        # 从 remote URL 提取 owner/repo
+        # 支持 https://github.com/owner/repo.git 和 git@github.com:owner/repo.git
+        if "github.com" in remote_url:
+            if remote_url.startswith("git@"):
+                repo_part = remote_url.split("github.com:")[1].replace(".git", "")
+            else:
+                repo_part = remote_url.split("github.com/")[1].replace(".git", "")
+        else:
+            print(f"  [部署] 无法解析仓库: {remote_url}")
+            return None
+    except Exception as e:
+        print(f"  [部署] 获取仓库信息失败: {e}")
+        return None
+    
+    # 保存当前分支
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=10
+        )
+        current_branch = result.stdout.strip()
+    except Exception:
+        current_branch = "main"
+    
+    # 切换到 gh-pages 分支（如果存在），否则创建
+    try:
+        # 先尝试切换
+        subprocess.run(
+            ["git", "checkout", "gh-pages"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=15
+        )
+    except Exception:
+        # 创建孤儿分支
+        subprocess.run(
+            ["git", "checkout", "--orphan", "gh-pages"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=15
+        )
+        # 清空工作区
+        import glob as _glob
+        for f in _glob.glob(os.path.join(repo_dir, "*")):
+            if os.path.basename(f) not in [".git", ".github", ".workbuddy"]:
+                try:
+                    if os.path.isfile(f):
+                        os.remove(f)
+                except Exception:
+                    pass
+    
+    # 复制 HTML 文件到 index.html
+    import shutil
+    target = Path(repo_dir) / "index.html"
+    shutil.copy(html_file, target)
+    
+    # 提交
+    subprocess.run(
+        ["git", "add", "index.html"],
+        cwd=repo_dir, capture_output=True, text=True, timeout=10
+    )
+    
+    now_str = _dt.now().strftime("%Y-%m-%d %H:%M")
+    result = subprocess.run(
+        ["git", "commit", "-m", f"Update chart {now_str}"],
+        cwd=repo_dir, capture_output=True, text=True, timeout=10
+    )
+    
+    if "nothing to commit" in result.stdout + result.stderr:
+        print("  [部署] 内容无变化，跳过提交")
+    else:
+        # 强制推送 gh-pages
+        try:
+            subprocess.run(
+                ["git", "push", "origin", "gh-pages", "--force"],
+                cwd=repo_dir, capture_output=True, text=True, timeout=30
+            )
+            print("  [部署] 已推送到 gh-pages")
+        except Exception as e:
+            print(f"  [部署] 推送失败: {e}")
+    
+    # 切回原分支
+    try:
+        subprocess.run(
+            ["git", "checkout", current_branch],
+            cwd=repo_dir, capture_output=True, text=True, timeout=10
+        )
+    except Exception:
+        pass
+    
+    # 构建 URL
+    url = f"https://{repo_part.split('/')[0]}.github.io/{repo_part.split('/')[1]}/"
+    print(f"  [部署] 访问地址: {url}")
+    return url
+
 
 def find_previous_key(history, current_key):
     """在当前 key 之前找最近一条历史记录 key"""
@@ -844,8 +1038,22 @@ def main():
 
     print(f"\n[推送] {reason}")
 
+    # ── 生成并部署 K 线图 ──
+    chart_url = ""
+    try:
+        chart_path = generate_chart_html()
+        if chart_path:
+            # 部署到 GitHub Pages
+            chart_url = deploy_chart_to_gh_pages(chart_path) or ""
+    except Exception as e:
+        print(f"  [图表] 生成/部署失败: {e}")
+
     if should_push:
         title = "金价"
+
+        # 注入 chart_url 到环境变量供 build_notification 使用
+        if chart_url:
+            os.environ["CHART_URL"] = chart_url
 
         content = build_notification(
             au9999, boshi_etf, gold_funds, intl_spot, brand_prices,
