@@ -77,15 +77,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # 生成 chart HTML
+          # 生成 chart HTML 到 /tmp，避免污染 main 分支工作区
           python -c "
           import sys
           sys.path.insert(0, '.')
           from gold_monitor import generate_chart_html
-          generate_chart_html('chart_output.html')
+          generate_chart_html('/tmp/chart_output.html')
           "
           # 部署到 gh-pages
-          cp chart_output.html /tmp/index.html
+          cp /tmp/chart_output.html /tmp/index.html
           git fetch origin gh-pages 2>/dev/null || true
           if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
             git checkout gh-pages
