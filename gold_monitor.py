@@ -506,7 +506,7 @@ def build_notification(au9999, boshi_etf, gold_funds, intl_spot, brand_prices,
     )
     lines.append(
         f'<div style="font-size:15px;font-weight:500;color:#8b7355">'
-        f'金价</div>'
+        f'金价播报</div>'
     )
     lines.append(
         f'<div style="font-size:12px;margin-top:4px;color:#c4b99a">'
