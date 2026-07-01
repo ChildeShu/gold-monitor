@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,maximum-scale=1.0,viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>金价走势</title>
+<script src="chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Helvetica Neue',sans-serif;
+  background:#0e0e1a;color:#e0e0e0;
+  -webkit-font-smoothing:antialiased;
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  display:flex;flex-direction:column;
+}
+.header{
+  flex-shrink:0;padding:7px 14px 3px;
+  background:#0e0e1a;position:relative;z-index:10;
+  display:flex;align-items:center;justify-content:space-between;height:28px;
+}
+.header-title{font-size:14px;font-weight:600;color:#fff;letter-spacing:0.3px}
+.header-date{font-size:11px;color:#888;font-variant-numeric:tabular-nums}
+.tabs{
+  flex-shrink:0;display:flex;gap:0;padding:0 6px;
+  background:#0e0e1a;position:relative;z-index:9;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;border-bottom:1px solid rgba(255,255,255,0.04);
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab{
+  flex-shrink:0;padding:7px 12px 5px;
+  font-size:13px;font-weight:500;cursor:pointer;
+  color:#666;position:relative;white-space:nowrap;
+  transition:color 0.2s;
+}
+.tab.active{color:#d4af37;font-weight:600}
+.tab.active::after{
+  content:'';position:absolute;bottom:0;left:12px;right:12px;
+  height:2px;background:#d4af37;border-radius:1px;
+}
+.chart-stage{
+  flex:1 1 auto;min-height:0;
+  position:relative;width:100%;
+  background:#0e0e1a;overflow:hidden;
+}
+.chart-area{position:absolute;top:0;left:0;right:0;bottom:0;touch-action:none}
+canvas#chart{width:100%!important;height:100%!important;display:block;touch-action:none}
+
+/* ===== 竖线（支付宝风格：金色虚线 + 顶部圆点价格气泡 + 底部时间标签）===== */
+.cross-line{
+  position:absolute;top:0;bottom:0;width:0;left:0;
+  pointer-events:none;display:none;z-index:20;
+}
+/* 虚线竖线 */
+.cross-line .cl-dash{
+  position:absolute;left:50%;top:0;bottom:0;
+  width:1px;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(212,175,55,0.8) 0px,
+    rgba(212,175,55,0.8) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  transform:translateX(-50%);
+}
+/* 左上角：多价格气泡（支付宝风格） */
+.chart-area .cl-top{
+  position:absolute;left:10px;top:10px;
+  display:none;align-items:flex-start;
+  pointer-events:none;z-index:22;
+}
+.chart-area .cl-price{
+  display:flex;flex-direction:column;gap:6px;
+  background:rgba(14,14,26,0.95);
+  border:1px solid rgba(255,255,255,0.12);
+  padding:7px 10px;border-radius:10px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.4);
+  font-variant-numeric:tabular-nums;
+  min-width:100px;
+}
+.cl-price-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:11px;font-weight:600;white-space:nowrap;
+}
+.cl-price-row .r-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cl-price-row .r-text{font-weight:700;text-align:right}
+/* 底部时间 */
+.cross-line .cl-time{
+  position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
+  font-size:10px;font-weight:600;
+  background:rgba(212,175,55,0.95);color:#0e0e1a;
+  padding:1px 7px;border-radius:4px;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  pointer-events:none;
+}
+
+/* 竖线旁价格标签（深色气泡 + 彩色圆点/文字，中心对齐数据点） */
+.price-tag{
+  position:absolute;left:0;top:0;
+  display:flex;align-items:center;gap:4px;
+  padding:1px 5px;border-radius:4px;
+  font-size:10px;font-weight:600;
+  background:rgba(14,14,26,0.92);
+  border:1px solid rgba(255,255,255,0.12);
+  color:#fff;
+  pointer-events:none;
+  box-shadow:0 1px 5px rgba(0,0,0,0.4);
+  font-variant-numeric:tabular-nums;z-index:21;
+  will-change:left,top;
+  transform:translateY(-50%);
+  transition:left 0.12s ease-out, top 0.12s ease-out;
+  white-space:nowrap;
+}
+.price-tag .pt-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.price-tag .pt-text{font-weight:700}
+
+.legend-bar{
+  flex-shrink:0;display:flex;gap:4px;
+  padding:5px 8px;background:#0e0e1a;
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+  border-top:1px solid rgba(255,255,255,0.04);
+}
+.legend-bar::-webkit-scrollbar{display:none}
+.legend-item{
+  flex-shrink:0;display:flex;align-items:center;gap:4px;
+  padding:3px 8px;border-radius:10px;font-size:10px;cursor:pointer;
+  background:rgba(255,255,255,0.04);border:1px solid transparent;
+  transition:all 0.15s;color:#888;
+}
+.legend-item .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.legend-item.active{color:#fff;border-color:rgba(212,175,55,0.4);background:rgba(212,175,55,0.08)}
+.legend-item.dimmed{opacity:0.3}
+
+.tap-hint{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-size:12px;color:#444;
+  pointer-events:none;text-align:center;line-height:1.6;
+  transition:opacity 0.3s;z-index:5;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-title">金价走势</div>
+  <div class="header-date" id="headerDate">--</div>
+</div>
+<div class="tabs" id="tabs"></div>
+<div class="chart-stage">
+  <div class="chart-area" id="chartArea">
+    <canvas id="chart"></canvas>
+    <div class="cross-line" id="crossLine">
+      <div class="cl-dash"></div>
+      <div class="cl-time" id="clTime"></div>
+    </div>
+    <div class="cl-top" id="clTop">
+      <div class="cl-price" id="clPrice"></div>
+    </div>
+    <div class="tap-hint" id="tapHint">← 在图表上滑动查看 →<br><span id="errorBox" style="color:#ff6b6b;display:none"></span></div>
+  </div>
+</div>
+<div class="legend-bar" id="legendBar"></div>
+
+<script>
+var RAW_DATA = {
+  "2026-06-26 12:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4003.45,
+      "intl_unit": "美元/盎司",
+      "cny_price": 875.4605,
+      "update_time": "2026-06-26 10:16:20"
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 895.76,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.296,
+      "prev_close": 8.268,
+      "change": 0.027999999999998693,
+      "change_rate": 0.3386550556361719
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.296,
+        "gold_price": 829.6,
+        "prev_etf_price": 8.268,
+        "prev_gold_price": 826.8,
+        "change": 0.027999999999998693,
+        "change_rate": 0.3386550556361719
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.319,
+        "gold_price": 831.9,
+        "prev_etf_price": 8.287,
+        "prev_gold_price": 828.7,
+        "change": 0.03200000000000003,
+        "change_rate": 0.38614697719319446
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.689,
+        "gold_price": 868.9,
+        "prev_etf_price": 8.658,
+        "prev_gold_price": 865.8,
+        "change": 0.031000000000000583,
+        "change_rate": 0.3580503580503648
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.721,
+        "gold_price": 872.1,
+        "prev_etf_price": 8.687,
+        "prev_gold_price": 868.7,
+        "change": 0.034000000000000696,
+        "change_rate": 0.3913894324853309
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.296,
+        "gold_price": 829.6,
+        "prev_etf_price": 8.268,
+        "prev_gold_price": 826.8,
+        "change": 0.027999999999998693,
+        "change_rate": 0.3386550556361719
+      }
+    },
+    "brands": {
+      "": 1222.0,
+      "周六福": 1217.0,
+      "老庙黄金": 1219.0,
+      "老凤祥": 1215.0,
+      "中国黄金": 1192.0,
+      "潮宏基": 1222.0,
+      "金至尊": 1222.0,
+      "谢瑞麟": 1222.0,
+      "六福珠宝": 1220.0,
+      "周生生": 1221.0,
+      "周大福": 1222.0
+    }
+  },
+  "2026-06-26 14:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4014.63,
+      "intl_unit": "美元/盎司",
+      "cny_price": 877.8666,
+      "update_time": "2026-06-26 10:16:20"
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 895.76,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.32,
+      "prev_close": 8.268,
+      "change": 0.0519999999999996,
+      "change_rate": 0.6289308176100581
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.32,
+        "gold_price": 832.0,
+        "prev_etf_price": 8.268,
+        "prev_gold_price": 826.8,
+        "change": 0.0519999999999996,
+        "change_rate": 0.6289308176100581
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.342,
+        "gold_price": 834.2,
+        "prev_etf_price": 8.287,
+        "prev_gold_price": 828.7,
+        "change": 0.054999999999999716,
+        "change_rate": 0.6636901170507989
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.716,
+        "gold_price": 871.6,
+        "prev_etf_price": 8.658,
+        "prev_gold_price": 865.8,
+        "change": 0.05799999999999983,
+        "change_rate": 0.669900669900668
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.748,
+        "gold_price": 874.8,
+        "prev_etf_price": 8.687,
+        "prev_gold_price": 868.7,
+        "change": 0.06099999999999994,
+        "change_rate": 0.7021986876942552
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.32,
+        "gold_price": 832.0,
+        "prev_etf_price": 8.268,
+        "prev_gold_price": 826.8,
+        "change": 0.0519999999999996,
+        "change_rate": 0.6289308176100581
+      }
+    },
+    "brands": {
+      "": 1222.0,
+      "周六福": 1217.0,
+      "老庙黄金": 1219.0,
+      "老凤祥": 1215.0,
+      "中国黄金": 1192.0,
+      "潮宏基": 1222.0,
+      "金至尊": 1222.0,
+      "谢瑞麟": 1222.0,
+      "六福珠宝": 1220.0,
+      "周生生": 1221.0,
+      "周大福": 1222.0
+    }
+  },
+  "2026-06-30 17:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4015.33,
+      "intl_unit": "美元/盎司",
+      "cny_price": 874.547,
+      "update_time": "2026-06-30 15:01:20"
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 898.03,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.351,
+      "prev_close": 8.423,
+      "change": -0.07199999999999918,
+      "change_rate": -0.8548023269618803
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.351,
+        "gold_price": 835.1,
+        "prev_etf_price": 8.423,
+        "prev_gold_price": 842.3,
+        "change": -0.07199999999999918,
+        "change_rate": -0.8548023269618803
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.378,
+        "gold_price": 837.8,
+        "prev_etf_price": 8.449,
+        "prev_gold_price": 844.9,
+        "change": -0.07099999999999973,
+        "change_rate": -0.8403361344537783
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.75,
+        "gold_price": 875.0,
+        "prev_etf_price": 8.824,
+        "prev_gold_price": 882.4,
+        "change": -0.07399999999999984,
+        "change_rate": -0.8386219401631895
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.78,
+        "gold_price": 878.0,
+        "prev_etf_price": 8.856,
+        "prev_gold_price": 885.6,
+        "change": -0.07600000000000051,
+        "change_rate": -0.8581752484191567
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.351,
+        "gold_price": 835.1,
+        "prev_etf_price": 8.423,
+        "prev_gold_price": 842.3,
+        "change": -0.07199999999999918,
+        "change_rate": -0.8548023269618803
+      }
+    },
+    "brands": {
+      "": 1238.0,
+      "周六福": 1233.0,
+      "老庙黄金": 1237.0,
+      "老凤祥": 1235.0,
+      "中国黄金": 1212.0,
+      "潮宏基": 1238.0,
+      "金至尊": 1238.0,
+      "谢瑞麟": 1238.0,
+      "六福珠宝": 1236.0,
+      "周生生": 1239.0,
+      "周大福": 1238.0
+    }
+  },
+  "2026-07-01 17:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 3974.44,
+      "intl_unit": "美元/盎司",
+      "cny_price": 867.8517,
+      "update_time": "2026-07-01 15:17:10"
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 887.61,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.255,
+      "prev_close": 8.351,
+      "change": -0.09600000000000009,
+      "change_rate": -1.1495629265956182
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.271,
+        "gold_price": 827.1,
+        "prev_etf_price": 8.378,
+        "prev_gold_price": 837.8,
+        "change": -0.10699999999999932,
+        "change_rate": -1.2771544521365399
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.642,
+        "gold_price": 864.2,
+        "prev_etf_price": 8.75,
+        "prev_gold_price": 875.0,
+        "change": -0.10800000000000054,
+        "change_rate": -1.2342857142857204
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.67,
+        "gold_price": 867.0,
+        "prev_etf_price": 8.78,
+        "prev_gold_price": 878.0,
+        "change": -0.10999999999999943,
+        "change_rate": -1.2528473804100164
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1206.0,
+      "老凤祥": 1206.0,
+      "中国黄金": 1185.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
+  },
+  "2026-07-01 18:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 3986.96,
+      "intl_unit": "美元/盎司",
+      "cny_price": 870.092,
+      "update_time": "2026-07-01 15:17:10",
+      "prev_close": 4007.82
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 887.61,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.255,
+      "prev_close": 8.351,
+      "change": -0.09600000000000009,
+      "change_rate": -1.1495629265956182
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.271,
+        "gold_price": 827.1,
+        "prev_etf_price": 8.378,
+        "prev_gold_price": 837.8,
+        "change": -0.10699999999999932,
+        "change_rate": -1.2771544521365399
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.642,
+        "gold_price": 864.2,
+        "prev_etf_price": 8.75,
+        "prev_gold_price": 875.0,
+        "change": -0.10800000000000054,
+        "change_rate": -1.2342857142857204
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.67,
+        "gold_price": 867.0,
+        "prev_etf_price": 8.78,
+        "prev_gold_price": 878.0,
+        "change": -0.10999999999999943,
+        "change_rate": -1.2528473804100164
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1206.0,
+      "老凤祥": 1206.0,
+      "中国黄金": 1185.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
+  },
+  "2026-07-01 21:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4022.67,
+      "intl_unit": "美元/盎司",
+      "cny_price": 877.3981,
+      "update_time": "2026-07-01 20:00:00",
+      "prev_close": 4007.82
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 887.61,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.255,
+      "prev_close": 8.351,
+      "change": -0.09600000000000009,
+      "change_rate": -1.1495629265956182
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.271,
+        "gold_price": 827.1,
+        "prev_etf_price": 8.378,
+        "prev_gold_price": 837.8,
+        "change": -0.10699999999999932,
+        "change_rate": -1.2771544521365399
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.642,
+        "gold_price": 864.2,
+        "prev_etf_price": 8.75,
+        "prev_gold_price": 875.0,
+        "change": -0.10800000000000054,
+        "change_rate": -1.2342857142857204
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.67,
+        "gold_price": 867.0,
+        "prev_etf_price": 8.78,
+        "prev_gold_price": 878.0,
+        "change": -0.10999999999999943,
+        "change_rate": -1.2528473804100164
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.255,
+        "gold_price": 825.5,
+        "prev_etf_price": 8.351,
+        "prev_gold_price": 835.1,
+        "change": -0.09600000000000009,
+        "change_rate": -1.1495629265956182
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1206.0,
+      "老凤祥": 1206.0,
+      "中国黄金": 1185.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
+  }
+};
+var GEN_TIME = "2026-07-01 21:17";
+
+var GROUPS = {
+  "国际": {label:"国际", series:[
+    {key:"intl_spot_cny",label:"国际金价(人民币)",unit:"元/克",color:"#ff6b6b",decimals:2,axis:"y"},
+    {key:"intl_spot_usd",label:"国际金价(美元)",unit:"美元/盎司",color:"#ffa502",decimals:1,axis:"y1"}
+  ]},
+  "投资": {label:"投资", series:[
+    {key:"au9999",label:"AU9999",unit:"元/克",color:"#2eed57",decimals:2,axis:"y"},
+    {key:"boshi_etf",label:"博时黄金ETF",unit:"元/克",color:"#1e90ff",decimals:2,axis:"y"}
+  ]},
+  "基金": {label:"基金", series:[
+    {key:"fund_002610",label:"博时黄金",unit:"元/克",color:"#ff6348",decimals:2,axis:"y"},
+    {key:"fund_000216",label:"华安黄金",unit:"元/克",color:"#7bed9f",decimals:2,axis:"y"},
+    {key:"fund_002963",label:"易方达黄金",unit:"元/克",color:"#70a1ff",decimals:2,axis:"y"},
+    {key:"fund_000218",label:"国泰黄金",unit:"元/克",color:"#ffa502",decimals:2,axis:"y"},
+    {key:"fund_000929",label:"博时黄金D",unit:"元/克",color:"#a4b0be",decimals:2,axis:"y"}
+  ]},
+  "品牌": {label:"品牌", series:[
+    {key:"brand_周大福",label:"周大福",unit:"元/克",color:"#eccc68",decimals:0,axis:"y"},
+    {key:"brand_老庙黄金",label:"老庙黄金",unit:"元/克",color:"#ff7f50",decimals:0,axis:"y"},
+    {key:"brand_周六福",label:"周六福",unit:"元/克",color:"#ff6b81",decimals:0,axis:"y"},
+    {key:"brand_老凤祥",label:"老凤祥",unit:"元/克",color:"#a29bfe",decimals:0,axis:"y"},
+    {key:"brand_中国黄金",label:"中国黄金",unit:"元/克",color:"#dfe6e9",decimals:0,axis:"y"},
+    {key:"brand_潮宏基",label:"潮宏基",unit:"元/克",color:"#55efc4",decimals:0,axis:"y"},
+    {key:"brand_金至尊",label:"金至尊",unit:"元/克",color:"#74b9ff",decimals:0,axis:"y"},
+    {key:"brand_谢瑞麟",label:"谢瑞麟",unit:"元/克",color:"#fab1a0",decimals:0,axis:"y"},
+    {key:"brand_六福珠宝",label:"六福珠宝",unit:"元/克",color:"#81ecec",decimals:0,axis:"y"},
+    {key:"brand_周生生",label:"周生生",unit:"元/克",color:"#fdcb6e",decimals:0,axis:"y"}
+  ]}
+};
+
+/* ===== 全局状态 ===== */
+var gChart = null;
+var gCurrentGroup = "国际";
+var gHighlightedSeries = null;
+var gLastCrossIdx = -1;
+var gHideTimer = null;
+var gTapHint = null;
+var gChartArea = null;
+var gCrossLine = null;
+var gClTop = null, gClPrice = null, gClTime = null;
+var gLegendBar = null;
+var gParsedData = null;
+var gIsDown = false;
+var gRafId = null;
+var gPendingCssX = null;
+var gTabSwipeHandled = false;
+
+/* ===== 数据解析 ===== */
+function parseData() {
+  var labels = [], datasets = {};
+  for (var gi in GROUPS)
+    for (var si in GROUPS[gi].series) datasets[GROUPS[gi].series[si].key] = [];
+  var allKeys = Object.keys(RAW_DATA).sort();
+  allKeys.forEach(function(k){
+    var d = RAW_DATA[k]; labels.push(k);
+    if (d.intl_spot) {
+      datasets["intl_spot_cny"].push(d.intl_spot.cny_price || null);
+      datasets["intl_spot_usd"].push(d.intl_spot.intl_price || null);
+    } else { datasets["intl_spot_cny"].push(null); datasets["intl_spot_usd"].push(null); }
+    datasets["au9999"].push(d.au9999 ? d.au9999.price : null);
+    datasets["boshi_etf"].push(d.boshi_etf ? d.boshi_etf.price * 100 : null);
+    var fc = ["002610","000216","002963","000218","000929"];
+    if (d.gold_funds) {
+      fc.forEach(function(c){ datasets["fund_"+c].push(d.gold_funds[c]?d.gold_funds[c].gold_price:null); });
+    } else { fc.forEach(function(c){ datasets["fund_"+c].push(null); }); }
+    var found = {};
+    if (d.brands) {
+      for (var b in d.brands) { if(!b) continue; var k2="brand_"+b; if(datasets[k2]!==undefined){ datasets[k2].push(d.brands[b]); found[k2]=true; } }
+      for (var gi in GROUPS) for (var si in GROUPS[gi].series) { var s=GROUPS[gi].series[si]; if(s.key.indexOf("brand_")===0 && !found[s.key]) datasets[s.key].push(null); }
+    } else {
+      for (var gi in GROUPS) for (var si in GROUPS[gi].series) { if(GROUPS[gi].series[si].key.indexOf("brand_")===0) datasets[GROUPS[gi].series[si].key].push(null); }
+    }
+  });
+  return { labels: labels, rawLabels: labels, datasets: datasets };
+}
+
+/* ===== 坐标转换工具 ===== */
+function cssToCanvasX(cssX, dprX) {
+  if (dprX === undefined) {
+    var r = gChart.canvas.getBoundingClientRect();
+    dprX = gChart.canvas.width / r.width;
+  }
+  return cssX * dprX;
+}
+function canvasToCssX(canvasX, dprX) {
+  if (dprX === undefined) {
+    var r = gChart.canvas.getBoundingClientRect();
+    dprX = gChart.canvas.width / r.width;
+  }
+  return canvasX / dprX;
+}
+function canvasToCssY(canvasY, dprY) {
+  if (dprY === undefined) {
+    var r = gChart.canvas.getBoundingClientRect();
+    dprY = gChart.canvas.height / r.height;
+  }
+  return canvasY / dprY;
+}
+
+/* ===== 根据 X 像素位置找数据点索引 ===== */
+function getIndexAtCanvasX(canvasX) {
+  var xs = gChart.scales.x;
+  if (!xs) return -1;
+  var n = gChart.data.labels.length;
+  if (n === 0) return -1;
+  var L = xs.getPixelForValue(0);
+  var R = xs.getPixelForValue(n - 1);
+  if (canvasX <= L) return 0;
+  if (canvasX >= R) return n - 1;
+  for (var i = 0; i < n - 1; i++) {
+    var p0 = xs.getPixelForValue(i);
+    var p1 = xs.getPixelForValue(i + 1);
+    if (canvasX <= (p0 + p1) / 2) return i;
+  }
+  return n - 1;
+}
+
+/* ===== 构建 dataset ===== */
+function buildDatasets(data, groupName) {
+  var group = GROUPS[groupName];
+  return group.series.map(function(s){
+    return {
+      label: s.label, data: data.datasets[s.key],
+      borderColor: s.color, backgroundColor: s.color + "15",
+      borderWidth: 1.8, pointRadius: 0, pointHoverRadius: 4,
+      pointHoverBackgroundColor: s.color, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 1.5,
+      tension: 0.3, fill: false,
+      yAxisID: s.axis, spanGaps: false,
+      unit: s.unit, decimals: s.decimals, seriesKey: s.key
+    };
+  });
+}
+
+/* ===== Y 轴配置 ===== */
+function getScales(groupName) {
+  var showY1 = (groupName === "国际");
+  var scales = {
+    x: {
+      type: "category", grid: { color: "rgba(255,255,255,0.03)" },
+      border: { color: "rgba(255,255,255,0.1)" },
+      ticks: {
+        color: "#888", font: { size: 9 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 5, padding: 2,
+        callback: function(v) {
+          var lbl = this.getLabelForValue(v);
+          if (!lbl) return "";
+          var p = lbl.split(" "); return p[0].slice(5) + " " + p[1].slice(0,5);
+        }
+      }
+    },
+    y: {
+      type: "linear", position: "left",
+      grid: { color: "rgba(255,255,255,0.04)" },
+      border: { color: "rgba(255,255,255,0.1)" },
+      ticks: { color: "#888", font: { size: 9 }, maxTicksLimit: 5, padding: 4, callback: function(v){ return v.toFixed(0); } }
+    }
+  };
+  scales.y1 = {
+    type: "linear", display: showY1, position: "right",
+    grid: { drawOnChartArea: false },
+    border: { color: "rgba(255,255,255,0.1)" },
+    ticks: { color: "#ffa502", font: { size: 9 }, maxTicksLimit: 5, padding: 4, callback: function(v){ return v.toFixed(0); } }
+  };
+  return scales;
+}
+
+/* ===== 错误显示工具（排查时用） ===== */
+function showError(msg) {
+  var eb = document.getElementById("errorBox");
+  var ta = document.getElementById("tapHint");
+  if (eb) { eb.textContent = "❌ " + msg; eb.style.display = "inline"; }
+  if (ta) { ta.style.opacity = "1"; }
+  console.error(msg);
+}
+window.addEventListener("error", function(e){
+  showError("全局错误: " + (e.message || e) + " @ " + (e.filename||"") + ":" + (e.lineno||""));
+});
+window.addEventListener("unhandledrejection", function(e){
+  showError("Promise 错误: " + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
+
+/* ===== 渲染图表 ===== */
+function renderChart(groupName) {
+  try {
+    gCurrentGroup = groupName;
+    gParsedData = parseData();
+    if (gChart) { gChart.destroy(); gChart = null; }
+    var ctx = document.getElementById("chart").getContext("2d");
+    gChart = new Chart(ctx, {
+      type: "line",
+      data: { labels: gParsedData.labels, datasets: buildDatasets(gParsedData, groupName) },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { top: 8, right: 10, bottom: 4, left: 6 } },
+        interaction: { mode: "index", axis: "x", intersect: false },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: getScales(groupName),
+        events: []
+      }
+    });
+    document.getElementById("headerDate").textContent =
+      gParsedData.rawLabels[0].slice(5) + " ~ " + gParsedData.rawLabels[gParsedData.rawLabels.length-1].slice(5);
+    renderTabs();
+    renderLegendBar();
+    gLastCrossIdx = -1;
+    if (gCrossLine) gCrossLine.style.display = "none";
+    if (gClTop) gClTop.style.display = "none";
+    if (gClTime) gClTime.style.display = "none";
+    removePriceTags();
+    if (gTapHint) gTapHint.style.opacity = "1";
+  } catch (err) {
+    showError("renderChart 错误: " + (err && err.message ? err.message : err));
+  }
+}
+
+/* ===== Tabs ===== */
+function renderTabs() {
+  var tabs = document.getElementById("tabs");
+  var keys = Object.keys(GROUPS);
+  tabs.innerHTML = keys.map(function(k){
+    return '<div class="tab' + (k === gCurrentGroup ? " active" : "") + '" data-group="' + k + '">' + GROUPS[k].label + '</div>';
+  }).join("");
+  [].forEach.call(tabs.querySelectorAll(".tab"), function(el){
+    el.addEventListener("click", function(e){
+      if (gTabSwipeHandled) { gTabSwipeHandled = false; return; }
+      renderChart(el.dataset.group);
+    });
+  });
+}
+
+/* ===== Legend ===== */
+function renderLegendBar() {
+  var group = GROUPS[gCurrentGroup];
+  var bar = document.getElementById("legendBar");
+  bar.innerHTML = group.series.map(function(s){
+    var isActive = !gHighlightedSeries || gHighlightedSeries === s.key;
+    return '<div class="legend-item' + (isActive ? " active" : "") + (!isActive ? " dimmed" : "") + '" data-key="' + s.key + '">' +
+      '<span class="dot" style="background:' + s.color + '"></span>' + s.label + '</div>';
+  }).join("");
+  [].forEach.call(bar.querySelectorAll(".legend-item"), function(el){
+    el.addEventListener("click", function(){ toggleHighlight(el.dataset.key); });
+  });
+}
+
+function toggleHighlight(key) {
+  gHighlightedSeries = (gHighlightedSeries === key) ? null : key;
+  gChart.data.datasets.forEach(function(ds, i){
+    var meta = gChart.getDatasetMeta(i);
+    meta.hidden = (!gHighlightedSeries || ds.seriesKey === gHighlightedSeries) ? false : true;
+  });
+  gChart.update();
+  renderLegendBar();
+}
+
+/* ===== 竖线 + 价格标签 ===== */
+
+/* 竖线完全跟随手指：传入的是 CSS X 像素 */
+function showCrosshair(cssX, idx, dprY) {
+  if (!gChart || !gChart.chartArea) return;
+
+  gCrossLine.style.left = cssX + "px";
+  gCrossLine.style.display = "block";
+
+  /* 底部时间 */
+  var label = gParsedData.rawLabels[idx];
+  var p = label.split(" ");
+  gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
+  gClTime.style.display = "block";
+
+  /* 顶部价格：所有可见 series */
+  var group = GROUPS[gCurrentGroup];
+  var dsIndexMap = {};
+  gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+  var rows = [];
+  for (var si = 0; si < group.series.length; si++) {
+    var s = group.series[si];
+    var dsIdx = dsIndexMap[s.key];
+    if (dsIdx === undefined) continue;
+    var meta = gChart.getDatasetMeta(dsIdx);
+    if (meta && meta.hidden) continue;
+    var v = gParsedData.datasets[s.key][idx];
+    if (v === null || v === undefined) continue;
+    rows.push({color: s.color, text: v.toFixed(s.decimals) + " " + s.unit});
+  }
+  if (rows.length > 0) {
+    gClPrice.innerHTML = rows.map(function(r){
+      return '<div class="cl-price-row"><span class="r-dot" style="background:' + r.color + '"></span><span class="r-text" style="color:' + r.color + '">' + r.text + '</span></div>';
+    }).join('');
+    gClTop.style.display = "flex";
+  } else {
+    gClTop.style.display = "none";
+  }
+
+  /* 更新竖线旁价格标签 */
+  updatePriceTags(cssX, idx, dprY);
+}
+
+function updatePriceTags(cssX, idx, dprY) {
+  var group = GROUPS[gCurrentGroup];
+  var dsIndexMap = {};
+  gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+
+  var existing = {};
+  var oldTags = gChartArea.querySelectorAll(".price-tag");
+  [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
+
+  var placed = [];
+  group.series.forEach(function(s){
+    var dsIdx = dsIndexMap[s.key];
+    if (dsIdx === undefined) return;
+    var meta = gChart.getDatasetMeta(dsIdx);
+    if (meta && meta.hidden) return;
+    var v = gParsedData.datasets[s.key][idx];
+    if (v === null || v === undefined) return;
+
+    /* 取 Y 像素（优先用 meta.data[idx].y，否则用 scale） */
+    var cssY;
+    var pt = meta.data && meta.data[idx];
+    if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
+      cssY = canvasToCssY(pt.y, dprY);
+    } else {
+      var ys = gChart.scales[s.axis];
+      if (!ys) return;
+      cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
+    }
+
+    /* 防重叠 */
+    for (var j = 0; j < placed.length; j++) {
+      if (Math.abs(cssY - placed[j]) < 16) { cssY = placed[j] + 16; }
+    }
+    placed.push(cssY);
+
+    var tag = existing[s.key];
+    if (tag) {
+      delete existing[s.key];
+    } else {
+      tag = document.createElement("div");
+      tag.className = "price-tag";
+      tag.dataset.key = s.key;
+      gChartArea.appendChild(tag);
+    }
+    tag.innerHTML = '<span class="pt-dot" style="background:' + s.color + '"></span><span class="pt-text" style="color:' + s.color + '">' + v.toFixed(s.decimals) + " " + s.unit + '</span>';
+    tag.style.top = cssY + "px";
+    tag.style.left = (cssX + 5) + "px";
+  });
+
+  /* 移除多余的旧标签 */
+  Object.keys(existing).forEach(function(k){ existing[k].remove(); });
+}
+
+function movePriceTagsOnly(cssX) {
+  /* 只移动已有标签的 X，不重建（避免抖动） */
+  var tags = gChartArea.querySelectorAll(".price-tag");
+  [].forEach.call(tags, function(el){ el.style.left = (cssX + 5) + "px"; });
+  gCrossLine.style.left = cssX + "px";
+}
+
+function removePriceTags() {
+  var tags = gChartArea.querySelectorAll(".price-tag");
+  [].forEach.call(tags, function(el){ el.remove(); });
+}
+
+/* ===== Tab 栏左右滑动切换 ===== */
+function bindTabSwipe() {
+  var tabs = document.getElementById("tabs");
+  var startX = 0, startY = 0;
+  var SWIPE_THRESHOLD = 50;
+
+  tabs.addEventListener("touchstart", function(e){
+    if (e.touches.length === 0) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, {passive: true});
+
+  tabs.addEventListener("touchend", function(e){
+    if (startX === 0) return;
+    var endX = e.changedTouches[0].clientX;
+    var endY = e.changedTouches[0].clientY;
+    var dx = endX - startX;
+    var dy = endY - startY;
+
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+      var keys = Object.keys(GROUPS);
+      var idx = keys.indexOf(gCurrentGroup);
+      if (idx < 0) { startX = 0; return; }
+      e.preventDefault();
+      gTabSwipeHandled = true;
+      if (dx < 0 && idx < keys.length - 1) {
+        renderChart(keys[idx + 1]);
+      } else if (dx > 0 && idx > 0) {
+        renderChart(keys[idx - 1]);
+      } else {
+        gTabSwipeHandled = false;
+      }
+    }
+    startX = 0;
+  }, {passive: false});
+}
+
+function bindLegendSwipe() {
+  var bar = document.getElementById("legendBar");
+  if (!bar) return;
+  var startX = 0, startY = 0;
+  var SWIPE_THRESHOLD = 40;
+
+  bar.addEventListener("touchstart", function(e){
+    if (e.touches.length === 0) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, {passive: true});
+
+  bar.addEventListener("touchend", function(e){
+    if (startX === 0) return;
+    var endX = e.changedTouches[0].clientX;
+    var endY = e.changedTouches[0].clientY;
+    var dx = endX - startX;
+    var dy = endY - startY;
+
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+      var group = GROUPS[gCurrentGroup];
+      var keys = group.series.map(function(s){ return s.key; });
+      if (keys.length === 0) { startX = 0; return; }
+      var idx = keys.indexOf(gHighlightedSeries);
+
+      if (dx < 0) {
+        // 左滑：下一个（循环）
+        idx = (idx + 1 >= keys.length) ? 0 : idx + 1;
+      } else {
+        // 右滑：上一个（循环）
+        idx = (idx - 1 < 0) ? keys.length - 1 : idx - 1;
+      }
+      e.preventDefault();
+      toggleHighlight(keys[idx]);
+    }
+    startX = 0;
+  }, {passive: false});
+}
+
+/* ===== 触摸 / 鼠标事件 ===== */
+/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突 */
+function bindEvents() {
+  if (!gChartArea) return;
+
+  function getCssXFromTouch(e) {
+    if (e.touches && e.touches.length > 0) return e.touches[0].clientX - gChart.canvas.getBoundingClientRect().left;
+    return null;
+  }
+  function getCssXFromMouse(e) {
+    return e.clientX - gChart.canvas.getBoundingClientRect().left;
+  }
+
+  function scheduleMove(cssX) {
+    gPendingCssX = cssX;
+    if (gRafId) return;
+    gRafId = requestAnimationFrame(function(){
+      gRafId = null;
+      var x = gPendingCssX;
+      gPendingCssX = null;
+      if (x !== null) onMove(x);
+    });
+  }
+
+  gChartArea.addEventListener("touchstart", function(e){
+    if (e.touches.length === 0) return;
+    gIsDown = true;
+    clearTimeout(gHideTimer);
+    var cssX = getCssXFromTouch(e);
+    if (cssX !== null) scheduleMove(cssX);
+    e.preventDefault();
+  }, {passive:false});
+
+  gChartArea.addEventListener("touchmove", function(e){
+    if (!gIsDown || e.touches.length === 0) return;
+    var cssX = getCssXFromTouch(e);
+    if (cssX !== null) scheduleMove(cssX);
+    e.preventDefault();
+  }, {passive:false});
+
+  gChartArea.addEventListener("touchend", onEnd);
+  gChartArea.addEventListener("touchcancel", onEnd);
+
+  gChartArea.addEventListener("mousedown", function(e){
+    gIsDown = true;
+    clearTimeout(gHideTimer);
+    onMove(getCssXFromMouse(e));
+  });
+
+  document.addEventListener("mousemove", function(e){
+    if (!gIsDown) return;
+    scheduleMove(getCssXFromMouse(e));
+  });
+
+  document.addEventListener("mouseup", onEnd);
+  document.addEventListener("mouseleave", function(){ if (gIsDown) onEnd(); });
+}
+
+function onMove(cssX) {
+  if (!gChart || !gChart.chartArea || !gParsedData) return;
+
+  var rect = gChart.canvas.getBoundingClientRect();
+  var dprX = gChart.canvas.width / rect.width;
+  var dprY = gChart.canvas.height / rect.height;
+
+  /* 限制到 canvas 可视区域内 */
+  var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
+  var canvasX = cssToCanvasX(clampedCssX, dprX);
+
+  var ca = gChart.chartArea;
+  var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
+  var idx = getIndexAtCanvasX(clampedCanvasX);
+  if (idx < 0) return;
+
+  if (idx !== gLastCrossIdx) {
+    gLastCrossIdx = idx;
+    showCrosshair(clampedCssX, idx, dprY);
+    if (gTapHint) gTapHint.style.opacity = "0";
+  } else {
+    movePriceTagsOnly(clampedCssX);
+  }
+}
+
+function onEnd() {
+  gIsDown = false;
+  clearTimeout(gHideTimer);
+  gHideTimer = setTimeout(function(){
+    gCrossLine.style.display = "none";
+    gClTime.style.display = "none";
+    gClTop.style.display = "none";
+    removePriceTags();
+    gLastCrossIdx = -1;
+    if (gTapHint) gTapHint.style.opacity = "1";
+  }, 2000);
+}
+
+function init() {
+  try {
+    if (typeof Chart === "undefined") {
+      showError("Chart.js 未加载，请检查网络");
+      return;
+    }
+    gChartArea = document.getElementById("chartArea");
+    gCrossLine = document.getElementById("crossLine");
+    gClTime = document.getElementById("clTime");
+    gClPrice = document.getElementById("clPrice");
+    gClTop = document.getElementById("clTop");
+    gTapHint = document.getElementById("tapHint");
+    gLegendBar = document.getElementById("legendBar");
+    if (!gChartArea) { showError("找不到 #chartArea 元素"); return; }
+    renderChart("国际");
+    bindTabSwipe();
+    bindLegendSwipe();
+    bindEvents();
+  } catch (err) {
+    showError("init 错误: " + (err && err.message ? err.message : err));
+  }
+}
+window.addEventListener("load", init);
+</script>
+</body>
+</html>
