@@ -120,6 +120,17 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
 .price-tag .pt-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
 .price-tag .pt-text{font-weight:700}
 
+/* 高亮圆点：标记竖线与数据线的实际交点 */
+.highlight-dot{
+  position:absolute;left:0;top:0;
+  width:8px;height:8px;border-radius:50%;
+  border:2px solid #fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.4);
+  pointer-events:none;z-index:21;
+  transform:translate(-50%, -50%);
+  transition:left 0.12s ease-out, top 0.12s ease-out;
+}
+
 .legend-bar{
   flex-shrink:0;display:flex;gap:4px;
   padding:5px 8px;background:#0e0e1a;
@@ -737,7 +748,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-01 21:54";
+var GEN_TIME = "2026-07-01 22:06";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -971,7 +982,7 @@ function renderChart(groupName) {
     if (gCrossLine) gCrossLine.style.display = "none";
     if (gClTop) gClTop.style.display = "none";
     if (gClTime) gClTime.style.display = "none";
-    removePriceTags();
+    removeCrosshairDetails();
     if (gTapHint) gTapHint.style.opacity = "1";
   } catch (err) {
     logError("renderChart", err);
@@ -1085,16 +1096,19 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     var oldTags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
 
+    var existingDots = {};
+    var oldDots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
+
     /* chartArea 边界（CSS 像素） */
     var areaTop = canvasToCssY(ca.top, dprY);
     var areaBottom = canvasToCssY(ca.bottom, dprY);
     var areaLeft = canvasToCssX(ca.left, dprX);
     var areaRight = canvasToCssX(ca.right, dprX);
-    var areaHeight = areaBottom - areaTop;
     var TAG_H = 20; /* 估算标签高度，含 padding/border */
     var halfH = TAG_H / 2;
     var MIN_GAP = 4; /* 标签与边界/标签的最小间距 */
-    var MAX_SHIFT = TAG_H * 1.5; /* 偏离数据点的最大距离 */
+    var MAX_SHIFT = TAG_H; /* 偏离数据点的最大距离（比之前更小） */
 
     var placed = []; /* 已放置标签的 {center, top, bottom} */
 
@@ -1115,6 +1129,26 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         var ys = gChart.scales[s.axis];
         if (!ys) return;
         cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
+      }
+
+      /* 高亮圆点始终放在真实数据点位置 */
+      var dot = existingDots[s.key];
+      if (dot) {
+        delete existingDots[s.key];
+      } else {
+        dot = document.createElement("div");
+        dot.className = "highlight-dot";
+        dot.dataset.key = s.key;
+        gChartArea.appendChild(dot);
+      }
+      dot.style.backgroundColor = s.color;
+      dot.style.left = cssX + "px";
+      dot.style.top = cssY + "px";
+      /* 高亮模式下只显示当前高亮 series 的圆点；否则显示所有可见 series */
+      if (gHighlightedSeries && gHighlightedSeries !== s.key) {
+        dot.style.display = "none";
+      } else {
+        dot.style.display = "block";
       }
 
       /* 标签中心默认对齐数据点，但限制在绘图区域内 */
@@ -1195,31 +1229,36 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       tag.style.left = left + "px";
     });
 
-    /* 移除多余的旧标签 */
+    /* 移除多余的旧标签和旧圆点 */
     Object.keys(existing).forEach(function(k){ existing[k].remove(); });
+    Object.keys(existingDots).forEach(function(k){ existingDots[k].remove(); });
   } catch (err) {
     logError("updatePriceTags", err);
   }
 }
 
-function movePriceTagsOnly(cssX) {
+function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine) return;
-    /* 只移动已有标签的 X，不重建（避免抖动） */
+    /* 只移动已有标签和圆点的 X，不重建（避免抖动） */
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){ el.style.left = (cssX + 5) + "px"; });
+    var dots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(dots, function(el){ el.style.left = cssX + "px"; });
     gCrossLine.style.left = cssX + "px";
   } catch (err) {
-    logError("movePriceTagsOnly", err);
+    logError("moveCrosshairOnly", err);
   }
 }
 
-function removePriceTags() {
+function removeCrosshairDetails() {
   try {
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){ el.remove(); });
+    var dots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(dots, function(el){ el.remove(); });
   } catch (err) {
-    logError("removePriceTags", err);
+    logError("removeCrosshairDetails", err);
   }
 }
 
@@ -1415,7 +1454,7 @@ function onMove(cssX) {
       showCrosshair(clampedCssX, idx, dprX, dprY);
       if (gTapHint) gTapHint.style.opacity = "0";
     } else {
-      movePriceTagsOnly(clampedCssX);
+      moveCrosshairOnly(clampedCssX);
     }
   } catch (err) {
     logError("onMove", err);
@@ -1431,7 +1470,7 @@ function onEnd() {
         gCrossLine.style.display = "none";
         gClTime.style.display = "none";
         gClTop.style.display = "none";
-        removePriceTags();
+        removeCrosshairDetails();
         gLastCrossIdx = -1;
         if (gTapHint) gTapHint.style.opacity = "1";
       } catch (err) { logError("onEnd timeout", err); }
@@ -1439,6 +1478,56 @@ function onEnd() {
   } catch (err) {
     logError("onEnd", err);
   }
+}
+
+/* ===== 页面加载后自动刷新最新数据 ===== */
+function fetchLatest() {
+  try {
+    if (typeof fetch === "undefined") return;
+    var url = "latest.json?_t=" + Date.now();
+    fetch(url, { cache: "no-store" })
+      .then(function(r) { return r.json(); })
+      .then(function(latest) {
+        if (!latest || typeof latest !== "object") return;
+        var keys = Object.keys(latest);
+        if (keys.length === 0) return;
+        var latestKey = keys[0];
+        var latestData = latest[latestKey];
+        if (!latestData) return;
+
+        var rawKeys = Object.keys(RAW_DATA);
+        if (rawKeys.length === 0) {
+          RAW_DATA[latestKey] = latestData;
+        } else {
+          var lastKey = rawKeys[rawKeys.length - 1];
+          if (latestKey > lastKey) {
+            RAW_DATA[latestKey] = latestData;
+          } else if (latestKey === lastKey) {
+            RAW_DATA[latestKey] = latestData;
+          }
+        }
+
+        /* 清理过期数据：保留最近 1000 条 */
+        var all = Object.keys(RAW_DATA).sort();
+        if (all.length > 1000) {
+          var keep = all.slice(-1000);
+          var trimmed = {};
+          keep.forEach(function(k){ trimmed[k] = RAW_DATA[k]; });
+          RAW_DATA = trimmed;
+        }
+
+        /* 重新渲染 */
+        gParsedData = parseData();
+        if (gChart) {
+          gChart.data.labels = gParsedData.labels;
+          gChart.data.datasets = buildDatasets(gParsedData, gCurrentGroup);
+          gChart.update();
+          document.getElementById("headerDate").textContent =
+            gParsedData.rawLabels[0].slice(5) + " ~ " + gParsedData.rawLabels[gParsedData.rawLabels.length-1].slice(5);
+        }
+      })
+      .catch(function(err) { /* 静默失败：使用页面内嵌数据 */ });
+  } catch (err) { logError("fetchLatest", err); }
 }
 
 function init() {
@@ -1459,6 +1548,7 @@ function init() {
     bindTabSwipe();
     bindLegendSwipe();
     bindEvents();
+    fetchLatest();
   } catch (err) {
     showError("init 错误: " + (err && err.message ? err.message : err));
   }
