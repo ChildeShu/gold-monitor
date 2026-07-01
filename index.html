@@ -737,7 +737,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-01 21:41";
+var GEN_TIME = "2026-07-01 21:54";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1028,7 +1028,7 @@ function toggleHighlight(key) {
 /* ===== 竖线 + 价格标签 ===== */
 
 /* 竖线完全跟随手指：传入的是 CSS X 像素 */
-function showCrosshair(cssX, idx, dprY) {
+function showCrosshair(cssX, idx, dprX, dprY) {
   try {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gClPrice || !gClTop || !gParsedData) return;
 
@@ -1066,15 +1066,17 @@ function showCrosshair(cssX, idx, dprY) {
     }
 
     /* 更新竖线旁价格标签 */
-    updatePriceTags(cssX, idx, dprY);
+    updatePriceTags(cssX, idx, dprX, dprY);
   } catch (err) {
     logError("showCrosshair", err);
   }
 }
 
-function updatePriceTags(cssX, idx, dprY) {
+function updatePriceTags(cssX, idx, dprX, dprY) {
   try {
     if (!gChart || !gChartArea || !gParsedData) return;
+    var ca = gChart.chartArea;
+    if (!ca) return;
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
@@ -1083,7 +1085,19 @@ function updatePriceTags(cssX, idx, dprY) {
     var oldTags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
 
-    var placed = [];
+    /* chartArea 边界（CSS 像素） */
+    var areaTop = canvasToCssY(ca.top, dprY);
+    var areaBottom = canvasToCssY(ca.bottom, dprY);
+    var areaLeft = canvasToCssX(ca.left, dprX);
+    var areaRight = canvasToCssX(ca.right, dprX);
+    var areaHeight = areaBottom - areaTop;
+    var TAG_H = 20; /* 估算标签高度，含 padding/border */
+    var halfH = TAG_H / 2;
+    var MIN_GAP = 4; /* 标签与边界/标签的最小间距 */
+    var MAX_SHIFT = TAG_H * 1.5; /* 偏离数据点的最大距离 */
+
+    var placed = []; /* 已放置标签的 {center, top, bottom} */
+
     group.series.forEach(function(s){
       var dsIdx = dsIndexMap[s.key];
       if (dsIdx === undefined) return;
@@ -1103,11 +1117,61 @@ function updatePriceTags(cssX, idx, dprY) {
         cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
       }
 
-      /* 防重叠 */
-      for (var j = 0; j < placed.length; j++) {
-        if (Math.abs(cssY - placed[j]) < 16) { cssY = placed[j] + 16; }
+      /* 标签中心默认对齐数据点，但限制在绘图区域内 */
+      var center = cssY;
+      var minCenter = areaTop + halfH + MIN_GAP;
+      var maxCenter = areaBottom - halfH - MIN_GAP;
+      if (center < minCenter) center = minCenter;
+      if (center > maxCenter) center = maxCenter;
+
+      /* 防重叠：优先保持贴近数据点，只在重叠时小范围偏移 */
+      var bestCenter = center;
+      var bestDist = 0;
+
+      /* 先尝试向下移动 */
+      var tryCenter = center;
+      var shifted = false;
+      for (var loop = 0; loop < placed.length; loop++) {
+        var p = placed[loop];
+        if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+          var newCenter = p.bottom + halfH + MIN_GAP;
+          if (newCenter <= maxCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+            tryCenter = newCenter;
+            shifted = true;
+          } else {
+            shifted = false;
+            break;
+          }
+        }
       }
-      placed.push(cssY);
+      if (shifted) { bestCenter = tryCenter; bestDist = Math.abs(bestCenter - cssY); }
+
+      /* 向下塞不下则尝试向上 */
+      if (!shifted) {
+        tryCenter = center;
+        for (var loop = 0; loop < placed.length; loop++) {
+          var p = placed[loop];
+          if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+            var newCenter = p.top - halfH - MIN_GAP;
+            if (newCenter >= minCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+              tryCenter = newCenter;
+              shifted = true;
+            } else {
+              shifted = false;
+              break;
+            }
+          }
+        }
+        if (shifted) {
+          var dist = Math.abs(tryCenter - cssY);
+          if (bestCenter === center || dist < bestDist) { bestCenter = tryCenter; bestDist = dist; }
+        }
+      }
+
+      center = bestCenter;
+      var top = center - halfH;
+      var bottom = center + halfH;
+      placed.push({center: center, top: top, bottom: bottom});
 
       var tag = existing[s.key];
       if (tag) {
@@ -1119,8 +1183,16 @@ function updatePriceTags(cssX, idx, dprY) {
         gChartArea.appendChild(tag);
       }
       tag.innerHTML = '<span class="pt-dot" style="background:' + s.color + '"></span><span class="pt-text" style="color:' + s.color + '">' + v.toFixed(s.decimals) + " " + s.unit + '</span>';
-      tag.style.top = cssY + "px";
-      tag.style.left = (cssX + 5) + "px";
+      tag.style.top = center + "px";
+
+      /* 水平位置：默认放竖线右侧，空间不够则放左侧 */
+      var left = cssX + 5;
+      tag.style.display = "flex"; /* 先 display 才能测宽度 */
+      var tagWidth = tag.offsetWidth || 70; /* fallback 70px */
+      if (left + tagWidth + 4 > areaRight && cssX - tagWidth - 4 >= areaLeft) {
+        left = cssX - tagWidth - 4;
+      }
+      tag.style.left = left + "px";
     });
 
     /* 移除多余的旧标签 */
@@ -1340,7 +1412,7 @@ function onMove(cssX) {
 
     if (idx !== gLastCrossIdx) {
       gLastCrossIdx = idx;
-      showCrosshair(clampedCssX, idx, dprY);
+      showCrosshair(clampedCssX, idx, dprX, dprY);
       if (gTapHint) gTapHint.style.opacity = "0";
     } else {
       movePriceTagsOnly(clampedCssX);
