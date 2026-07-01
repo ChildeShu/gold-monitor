@@ -70,6 +70,24 @@ def save_history(history):
     trimmed = dict(sorted(trimmed.items()))
     with open(HISTORY_PATH, "w", encoding="utf-8") as f:
         json.dump(trimmed, f, ensure_ascii=False, indent=2)
+    # 同时保存最新一条快照，供图表页加载时刷新
+    save_latest_snapshot(history)
+
+
+LATEST_PATH = SCRIPT_DIR / "latest.json"
+
+
+def save_latest_snapshot(history):
+    """保存最新一条数据到 latest.json，供静态图表页加载时刷新"""
+    if not history:
+        return
+    latest_key = sorted(history.keys())[-1]
+    latest_data = {latest_key: history[latest_key]}
+    try:
+        with open(LATEST_PATH, "w", encoding="utf-8") as f:
+            json.dump(latest_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"  [latest.json] 保存失败: {e}")
 
 
 SILENT_START = time(21, 0)
@@ -853,9 +871,15 @@ def deploy_chart_to_gh_pages(html_path):
     target = Path(repo_dir) / "index.html"
     shutil.copy(html_file, target)
     
+    # 复制辅助资源文件
+    for res in ["chart.umd.min.js", "latest.json"]:
+        src = Path(repo_dir) / res
+        if src.exists():
+            shutil.copy(src, Path(repo_dir) / res)
+    
     # 提交
     subprocess.run(
-        ["git", "add", "index.html"],
+        ["git", "add", "index.html", "chart.umd.min.js", "latest.json"],
         cwd=repo_dir, capture_output=True, text=True, timeout=10
     )
     
