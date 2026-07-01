@@ -287,6 +287,7 @@ def fetch_intl_spot():
 
     # 1. 先获取东方财富 XAU（更准确的美元/盎司）
     try:
+        from datetime import datetime as _dt
         em_fields = "f43,f44,f45,f46,f47,f48,f57,f58,f60,f107,f170"
         em_url = f"https://push2.eastmoney.com/api/qt/stock/get?secid=122.XAU&fields={em_fields}"
         r = requests.get(em_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
