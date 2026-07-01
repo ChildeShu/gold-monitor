@@ -737,7 +737,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-01 21:17";
+var GEN_TIME = "2026-07-01 21:23";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1046,6 +1046,8 @@ function updatePriceTags(cssX, idx, dprY) {
   [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
 
   var placed = [];
+  /* 基金 Tab 系列太多，只显示最多 4 个最靠近当前值的，避免堆叠；高亮优先 */
+  var visible = [];
   group.series.forEach(function(s){
     var dsIdx = dsIndexMap[s.key];
     if (dsIdx === undefined) return;
@@ -1054,7 +1056,6 @@ function updatePriceTags(cssX, idx, dprY) {
     var v = gParsedData.datasets[s.key][idx];
     if (v === null || v === undefined) return;
 
-    /* 取 Y 像素（优先用 meta.data[idx].y，否则用 scale） */
     var cssY;
     var pt = meta.data && meta.data[idx];
     if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
@@ -1064,7 +1065,20 @@ function updatePriceTags(cssX, idx, dprY) {
       if (!ys) return;
       cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
     }
+    visible.push({s: s, v: v, cssY: cssY, highlighted: s.key === gHighlightedSeries});
+  });
 
+  /* 高亮优先，然后按 Y 位置排序，最多保留 4 个（手机屏小，多了会堆叠） */
+  visible.sort(function(a, b){
+    if (a.highlighted && !b.highlighted) return -1;
+    if (!a.highlighted && b.highlighted) return 1;
+    return a.cssY - b.cssY;
+  });
+  var maxVisible = group.key === "基金" ? 4 : 6;
+  if (visible.length > maxVisible) visible = visible.slice(0, maxVisible);
+
+  visible.forEach(function(item){
+    var s = item.s, v = item.v, cssY = item.cssY;
     /* 防重叠 */
     for (var j = 0; j < placed.length; j++) {
       if (Math.abs(cssY - placed[j]) < 16) { cssY = placed[j] + 16; }
@@ -1178,12 +1192,16 @@ function bindLegendSwipe() {
 }
 
 /* ===== 触摸 / 鼠标事件 ===== */
-/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突 */
+/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突。
+   手机上把 touchmove/touchend 挂到 document，防止手指滑出 chartArea 后丢失事件 */
 function bindEvents() {
   if (!gChartArea) return;
 
   function getCssXFromTouch(e) {
-    if (e.touches && e.touches.length > 0) return e.touches[0].clientX - gChart.canvas.getBoundingClientRect().left;
+    if (e.touches && e.touches.length > 0) {
+      var rect = gChart.canvas.getBoundingClientRect();
+      return e.touches[0].clientX - rect.left;
+    }
     return null;
   }
   function getCssXFromMouse(e) {
@@ -1210,15 +1228,22 @@ function bindEvents() {
     e.preventDefault();
   }, {passive:false});
 
-  gChartArea.addEventListener("touchmove", function(e){
+  /* 用 document 监听 touchmove/touchend，避免手机滑出 canvas 区域后断掉 */
+  document.addEventListener("touchmove", function(e){
     if (!gIsDown || e.touches.length === 0) return;
     var cssX = getCssXFromTouch(e);
     if (cssX !== null) scheduleMove(cssX);
     e.preventDefault();
   }, {passive:false});
 
-  gChartArea.addEventListener("touchend", onEnd);
-  gChartArea.addEventListener("touchcancel", onEnd);
+  document.addEventListener("touchend", function(e){
+    if (!gIsDown) return;
+    onEnd();
+  });
+  document.addEventListener("touchcancel", function(e){
+    if (!gIsDown) return;
+    onEnd();
+  });
 
   gChartArea.addEventListener("mousedown", function(e){
     gIsDown = true;
