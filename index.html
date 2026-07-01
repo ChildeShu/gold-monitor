@@ -737,7 +737,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-01 21:23";
+var GEN_TIME = "2026-07-01 21:51";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -788,31 +788,36 @@ var gTabSwipeHandled = false;
 
 /* ===== 数据解析 ===== */
 function parseData() {
-  var labels = [], datasets = {};
-  for (var gi in GROUPS)
-    for (var si in GROUPS[gi].series) datasets[GROUPS[gi].series[si].key] = [];
-  var allKeys = Object.keys(RAW_DATA).sort();
-  allKeys.forEach(function(k){
-    var d = RAW_DATA[k]; labels.push(k);
-    if (d.intl_spot) {
-      datasets["intl_spot_cny"].push(d.intl_spot.cny_price || null);
-      datasets["intl_spot_usd"].push(d.intl_spot.intl_price || null);
-    } else { datasets["intl_spot_cny"].push(null); datasets["intl_spot_usd"].push(null); }
-    datasets["au9999"].push(d.au9999 ? d.au9999.price : null);
-    datasets["boshi_etf"].push(d.boshi_etf ? d.boshi_etf.price * 100 : null);
-    var fc = ["002610","000216","002963","000218","000929"];
-    if (d.gold_funds) {
-      fc.forEach(function(c){ datasets["fund_"+c].push(d.gold_funds[c]?d.gold_funds[c].gold_price:null); });
-    } else { fc.forEach(function(c){ datasets["fund_"+c].push(null); }); }
-    var found = {};
-    if (d.brands) {
-      for (var b in d.brands) { if(!b) continue; var k2="brand_"+b; if(datasets[k2]!==undefined){ datasets[k2].push(d.brands[b]); found[k2]=true; } }
-      for (var gi in GROUPS) for (var si in GROUPS[gi].series) { var s=GROUPS[gi].series[si]; if(s.key.indexOf("brand_")===0 && !found[s.key]) datasets[s.key].push(null); }
-    } else {
-      for (var gi in GROUPS) for (var si in GROUPS[gi].series) { if(GROUPS[gi].series[si].key.indexOf("brand_")===0) datasets[GROUPS[gi].series[si].key].push(null); }
-    }
-  });
-  return { labels: labels, rawLabels: labels, datasets: datasets };
+  try {
+    var labels = [], datasets = {};
+    for (var gi in GROUPS)
+      for (var si in GROUPS[gi].series) datasets[GROUPS[gi].series[si].key] = [];
+    var allKeys = Object.keys(RAW_DATA).sort();
+    allKeys.forEach(function(k){
+      var d = RAW_DATA[k]; labels.push(k);
+      if (d && d.intl_spot) {
+        datasets["intl_spot_cny"].push(d.intl_spot.cny_price || null);
+        datasets["intl_spot_usd"].push(d.intl_spot.intl_price || null);
+      } else { datasets["intl_spot_cny"].push(null); datasets["intl_spot_usd"].push(null); }
+      datasets["au9999"].push(d && d.au9999 ? d.au9999.price : null);
+      datasets["boshi_etf"].push(d && d.boshi_etf ? d.boshi_etf.price * 100 : null);
+      var fc = ["002610","000216","002963","000218","000929"];
+      if (d && d.gold_funds) {
+        fc.forEach(function(c){ datasets["fund_"+c].push(d.gold_funds[c]?d.gold_funds[c].gold_price:null); });
+      } else { fc.forEach(function(c){ datasets["fund_"+c].push(null); }); }
+      var found = {};
+      if (d && d.brands) {
+        for (var b in d.brands) { if(!b) continue; var k2="brand_"+b; if(datasets[k2]!==undefined){ datasets[k2].push(d.brands[b]); found[k2]=true; } }
+        for (var gi in GROUPS) for (var si in GROUPS[gi].series) { var s=GROUPS[gi].series[si]; if(s.key.indexOf("brand_")===0 && !found[s.key]) datasets[s.key].push(null); }
+      } else {
+        for (var gi in GROUPS) for (var si in GROUPS[gi].series) { if(GROUPS[gi].series[si].key.indexOf("brand_")===0) datasets[GROUPS[gi].series[si].key].push(null); }
+      }
+    });
+    return { labels: labels, rawLabels: labels, datasets: datasets };
+  } catch (err) {
+    logError("parseData", err);
+    return { labels: [], rawLabels: [], datasets: {} };
+  }
 }
 
 /* ===== 坐标转换工具 ===== */
@@ -912,8 +917,23 @@ function showError(msg) {
   if (ta) { ta.style.opacity = "1"; }
   console.error(msg);
 }
+function logError(prefix, err) {
+  console.error(prefix, err);
+  try {
+    var stack = err && err.stack ? err.stack : String(err);
+    showError(prefix + " " + (err && err.message ? err.message : err) + (stack ? " | " + stack.split("\n").slice(0,2).join(" ") : ""));
+  } catch (_) {}
+}
 window.addEventListener("error", function(e){
-  showError("全局错误: " + (e.message || e) + " @ " + (e.filename||"") + ":" + (e.lineno||""));
+  var msg = e.message || "";
+  // 移动端跨域/压缩脚本常只返回 "Script error."，缺少文件名行号
+  if (msg === "Script error." || (!e.filename && !e.lineno)) {
+    showError("页面脚本异常，请尝试刷新。若持续出现请截图反馈。");
+  } else {
+    showError("全局错误: " + msg + " @ " + (e.filename||"") + ":" + (e.lineno||""));
+  }
+  // 打印完整对象供调试
+  console.error("window.onerror", e);
 });
 window.addEventListener("unhandledrejection", function(e){
   showError("Promise 错误: " + (e.reason && e.reason.message ? e.reason.message : e.reason));
@@ -922,6 +942,10 @@ window.addEventListener("unhandledrejection", function(e){
 /* ===== 渲染图表 ===== */
 function renderChart(groupName) {
   try {
+    // 取消任何进行中的动画帧，避免旧事件处理器在新 chart 上操作
+    if (gRafId) { cancelAnimationFrame(gRafId); gRafId = null; }
+    gPendingCssX = null;
+    gIsDown = false;
     gCurrentGroup = groupName;
     gParsedData = parseData();
     if (gChart) { gChart.destroy(); gChart = null; }
@@ -950,7 +974,7 @@ function renderChart(groupName) {
     removePriceTags();
     if (gTapHint) gTapHint.style.opacity = "1";
   } catch (err) {
-    showError("renderChart 错误: " + (err && err.message ? err.message : err));
+    logError("renderChart", err);
   }
 }
 
@@ -963,8 +987,10 @@ function renderTabs() {
   }).join("");
   [].forEach.call(tabs.querySelectorAll(".tab"), function(el){
     el.addEventListener("click", function(e){
-      if (gTabSwipeHandled) { gTabSwipeHandled = false; return; }
-      renderChart(el.dataset.group);
+      try {
+        if (gTabSwipeHandled) { gTabSwipeHandled = false; return; }
+        renderChart(el.dataset.group);
+      } catch (err) { logError("tab click", err); }
     });
   });
 }
@@ -979,140 +1005,222 @@ function renderLegendBar() {
       '<span class="dot" style="background:' + s.color + '"></span>' + s.label + '</div>';
   }).join("");
   [].forEach.call(bar.querySelectorAll(".legend-item"), function(el){
-    el.addEventListener("click", function(){ toggleHighlight(el.dataset.key); });
+    el.addEventListener("click", function(){
+      try { toggleHighlight(el.dataset.key); } catch (err) { logError("legend click", err); }
+    });
   });
 }
 
 function toggleHighlight(key) {
-  gHighlightedSeries = (gHighlightedSeries === key) ? null : key;
-  gChart.data.datasets.forEach(function(ds, i){
-    var meta = gChart.getDatasetMeta(i);
-    meta.hidden = (!gHighlightedSeries || ds.seriesKey === gHighlightedSeries) ? false : true;
-  });
-  gChart.update();
-  renderLegendBar();
+  try {
+    gHighlightedSeries = (gHighlightedSeries === key) ? null : key;
+    gChart.data.datasets.forEach(function(ds, i){
+      var meta = gChart.getDatasetMeta(i);
+      meta.hidden = (!gHighlightedSeries || ds.seriesKey === gHighlightedSeries) ? false : true;
+    });
+    gChart.update();
+    renderLegendBar();
+  } catch (err) {
+    logError("toggleHighlight", err);
+  }
 }
 
 /* ===== 竖线 + 价格标签 ===== */
 
 /* 竖线完全跟随手指：传入的是 CSS X 像素 */
-function showCrosshair(cssX, idx, dprY) {
-  if (!gChart || !gChart.chartArea) return;
+function showCrosshair(cssX, idx, dprX, dprY) {
+  try {
+    if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gClPrice || !gClTop || !gParsedData) return;
 
-  gCrossLine.style.left = cssX + "px";
-  gCrossLine.style.display = "block";
+    gCrossLine.style.left = cssX + "px";
+    gCrossLine.style.display = "block";
 
-  /* 底部时间 */
-  var label = gParsedData.rawLabels[idx];
-  var p = label.split(" ");
-  gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
-  gClTime.style.display = "block";
+    /* 底部时间 */
+    var label = gParsedData.rawLabels[idx];
+    var p = label.split(" ");
+    gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
+    gClTime.style.display = "block";
 
-  /* 顶部价格：所有可见 series */
-  var group = GROUPS[gCurrentGroup];
-  var dsIndexMap = {};
-  gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
-  var rows = [];
-  for (var si = 0; si < group.series.length; si++) {
-    var s = group.series[si];
-    var dsIdx = dsIndexMap[s.key];
-    if (dsIdx === undefined) continue;
-    var meta = gChart.getDatasetMeta(dsIdx);
-    if (meta && meta.hidden) continue;
-    var v = gParsedData.datasets[s.key][idx];
-    if (v === null || v === undefined) continue;
-    rows.push({color: s.color, text: v.toFixed(s.decimals) + " " + s.unit});
+    /* 顶部价格：所有可见 series */
+    var group = GROUPS[gCurrentGroup];
+    var dsIndexMap = {};
+    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+    var rows = [];
+    for (var si = 0; si < group.series.length; si++) {
+      var s = group.series[si];
+      var dsIdx = dsIndexMap[s.key];
+      if (dsIdx === undefined) continue;
+      var meta = gChart.getDatasetMeta(dsIdx);
+      if (meta && meta.hidden) continue;
+      var v = gParsedData.datasets[s.key][idx];
+      if (v === null || v === undefined) continue;
+      rows.push({color: s.color, text: v.toFixed(s.decimals) + " " + s.unit});
+    }
+    if (rows.length > 0) {
+      gClPrice.innerHTML = rows.map(function(r){
+        return '<div class="cl-price-row"><span class="r-dot" style="background:' + r.color + '"></span><span class="r-text" style="color:' + r.color + '">' + r.text + '</span></div>';
+      }).join('');
+      gClTop.style.display = "flex";
+    } else {
+      gClTop.style.display = "none";
+    }
+
+    /* 更新竖线旁价格标签 */
+    updatePriceTags(cssX, idx, dprX, dprY);
+  } catch (err) {
+    logError("showCrosshair", err);
   }
-  if (rows.length > 0) {
-    gClPrice.innerHTML = rows.map(function(r){
-      return '<div class="cl-price-row"><span class="r-dot" style="background:' + r.color + '"></span><span class="r-text" style="color:' + r.color + '">' + r.text + '</span></div>';
-    }).join('');
-    gClTop.style.display = "flex";
-  } else {
-    gClTop.style.display = "none";
-  }
-
-  /* 更新竖线旁价格标签 */
-  updatePriceTags(cssX, idx, dprY);
 }
 
-function updatePriceTags(cssX, idx, dprY) {
-  var group = GROUPS[gCurrentGroup];
-  var dsIndexMap = {};
-  gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+function updatePriceTags(cssX, idx, dprX, dprY) {
+  try {
+    if (!gChart || !gChartArea || !gParsedData) return;
+    var ca = gChart.chartArea;
+    if (!ca) return;
+    var group = GROUPS[gCurrentGroup];
+    var dsIndexMap = {};
+    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
 
-  var existing = {};
-  var oldTags = gChartArea.querySelectorAll(".price-tag");
-  [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
+    var existing = {};
+    var oldTags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
 
-  var placed = [];
-  /* 基金 Tab 系列太多，只显示最多 4 个最靠近当前值的，避免堆叠；高亮优先 */
-  var visible = [];
-  group.series.forEach(function(s){
-    var dsIdx = dsIndexMap[s.key];
-    if (dsIdx === undefined) return;
-    var meta = gChart.getDatasetMeta(dsIdx);
-    if (meta && meta.hidden) return;
-    var v = gParsedData.datasets[s.key][idx];
-    if (v === null || v === undefined) return;
+    /* chartArea 边界（CSS 像素） */
+    var areaTop = canvasToCssY(ca.top, dprY);
+    var areaBottom = canvasToCssY(ca.bottom, dprY);
+    var areaLeft = canvasToCssX(ca.left, dprX);
+    var areaRight = canvasToCssX(ca.right, dprX);
+    var areaHeight = areaBottom - areaTop;
+    var TAG_H = 20; /* 估算标签高度，含 padding/border */
+    var halfH = TAG_H / 2;
+    var MIN_GAP = 4; /* 标签与边界/标签的最小间距 */
+    var MAX_SHIFT = TAG_H * 1.5; /* 偏离数据点的最大距离 */
 
-    var cssY;
-    var pt = meta.data && meta.data[idx];
-    if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
-      cssY = canvasToCssY(pt.y, dprY);
-    } else {
-      var ys = gChart.scales[s.axis];
-      if (!ys) return;
-      cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
-    }
-    visible.push({s: s, v: v, cssY: cssY, highlighted: s.key === gHighlightedSeries});
-  });
+    var placed = []; /* 已放置标签的 {center, top, bottom} */
 
-  /* 高亮优先，然后按 Y 位置排序，最多保留 4 个（手机屏小，多了会堆叠） */
-  visible.sort(function(a, b){
-    if (a.highlighted && !b.highlighted) return -1;
-    if (!a.highlighted && b.highlighted) return 1;
-    return a.cssY - b.cssY;
-  });
-  var maxVisible = group.key === "基金" ? 4 : 6;
-  if (visible.length > maxVisible) visible = visible.slice(0, maxVisible);
+    group.series.forEach(function(s){
+      var dsIdx = dsIndexMap[s.key];
+      if (dsIdx === undefined) return;
+      var meta = gChart.getDatasetMeta(dsIdx);
+      if (meta && meta.hidden) return;
+      var v = gParsedData.datasets[s.key][idx];
+      if (v === null || v === undefined) return;
 
-  visible.forEach(function(item){
-    var s = item.s, v = item.v, cssY = item.cssY;
-    /* 防重叠 */
-    for (var j = 0; j < placed.length; j++) {
-      if (Math.abs(cssY - placed[j]) < 16) { cssY = placed[j] + 16; }
-    }
-    placed.push(cssY);
+      /* 取 Y 像素（优先用 meta.data[idx].y，否则用 scale） */
+      var cssY;
+      var pt = meta.data && meta.data[idx];
+      if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
+        cssY = canvasToCssY(pt.y, dprY);
+      } else {
+        var ys = gChart.scales[s.axis];
+        if (!ys) return;
+        cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
+      }
 
-    var tag = existing[s.key];
-    if (tag) {
-      delete existing[s.key];
-    } else {
-      tag = document.createElement("div");
-      tag.className = "price-tag";
-      tag.dataset.key = s.key;
-      gChartArea.appendChild(tag);
-    }
-    tag.innerHTML = '<span class="pt-dot" style="background:' + s.color + '"></span><span class="pt-text" style="color:' + s.color + '">' + v.toFixed(s.decimals) + " " + s.unit + '</span>';
-    tag.style.top = cssY + "px";
-    tag.style.left = (cssX + 5) + "px";
-  });
+      /* 标签中心默认对齐数据点，但限制在绘图区域内 */
+      var center = cssY;
+      var minCenter = areaTop + halfH + MIN_GAP;
+      var maxCenter = areaBottom - halfH - MIN_GAP;
+      if (center < minCenter) center = minCenter;
+      if (center > maxCenter) center = maxCenter;
 
-  /* 移除多余的旧标签 */
-  Object.keys(existing).forEach(function(k){ existing[k].remove(); });
+      /* 防重叠：优先保持贴近数据点，只在重叠时小范围偏移 */
+      var bestCenter = center;
+      var bestDist = 0;
+
+      /* 先尝试向下移动 */
+      var tryCenter = center;
+      var shifted = false;
+      for (var loop = 0; loop < placed.length; loop++) {
+        var p = placed[loop];
+        if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+          var newCenter = p.bottom + halfH + MIN_GAP;
+          if (newCenter <= maxCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+            tryCenter = newCenter;
+            shifted = true;
+          } else {
+            shifted = false;
+            break;
+          }
+        }
+      }
+      if (shifted) { bestCenter = tryCenter; bestDist = Math.abs(bestCenter - cssY); }
+
+      /* 向下塞不下则尝试向上 */
+      if (!shifted) {
+        tryCenter = center;
+        for (var loop = 0; loop < placed.length; loop++) {
+          var p = placed[loop];
+          if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+            var newCenter = p.top - halfH - MIN_GAP;
+            if (newCenter >= minCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+              tryCenter = newCenter;
+              shifted = true;
+            } else {
+              shifted = false;
+              break;
+            }
+          }
+        }
+        if (shifted) {
+          var dist = Math.abs(tryCenter - cssY);
+          if (bestCenter === center || dist < bestDist) { bestCenter = tryCenter; bestDist = dist; }
+        }
+      }
+
+      center = bestCenter;
+      var top = center - halfH;
+      var bottom = center + halfH;
+      placed.push({center: center, top: top, bottom: bottom});
+
+      var tag = existing[s.key];
+      if (tag) {
+        delete existing[s.key];
+      } else {
+        tag = document.createElement("div");
+        tag.className = "price-tag";
+        tag.dataset.key = s.key;
+        gChartArea.appendChild(tag);
+      }
+      tag.innerHTML = '<span class="pt-dot" style="background:' + s.color + '"></span><span class="pt-text" style="color:' + s.color + '">' + v.toFixed(s.decimals) + " " + s.unit + '</span>';
+      tag.style.top = center + "px";
+
+      /* 水平位置：默认放竖线右侧，空间不够则放左侧 */
+      var left = cssX + 5;
+      tag.style.display = "flex"; /* 先 display 才能测宽度 */
+      var tagWidth = tag.offsetWidth || 70; /* fallback 70px */
+      if (left + tagWidth + 4 > areaRight && cssX - tagWidth - 4 >= areaLeft) {
+        left = cssX - tagWidth - 4;
+      }
+      tag.style.left = left + "px";
+    });
+
+    /* 移除多余的旧标签 */
+    Object.keys(existing).forEach(function(k){ existing[k].remove(); });
+  } catch (err) {
+    logError("updatePriceTags", err);
+  }
 }
 
 function movePriceTagsOnly(cssX) {
-  /* 只移动已有标签的 X，不重建（避免抖动） */
-  var tags = gChartArea.querySelectorAll(".price-tag");
-  [].forEach.call(tags, function(el){ el.style.left = (cssX + 5) + "px"; });
-  gCrossLine.style.left = cssX + "px";
+  try {
+    if (!gChartArea || !gCrossLine) return;
+    /* 只移动已有标签的 X，不重建（避免抖动） */
+    var tags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(tags, function(el){ el.style.left = (cssX + 5) + "px"; });
+    gCrossLine.style.left = cssX + "px";
+  } catch (err) {
+    logError("movePriceTagsOnly", err);
+  }
 }
 
 function removePriceTags() {
-  var tags = gChartArea.querySelectorAll(".price-tag");
-  [].forEach.call(tags, function(el){ el.remove(); });
+  try {
+    var tags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(tags, function(el){ el.remove(); });
+  } catch (err) {
+    logError("removePriceTags", err);
+  }
 }
 
 /* ===== Tab 栏左右滑动切换 ===== */
@@ -1122,34 +1230,38 @@ function bindTabSwipe() {
   var SWIPE_THRESHOLD = 50;
 
   tabs.addEventListener("touchstart", function(e){
-    if (e.touches.length === 0) return;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
+    try {
+      if (!e.touches || e.touches.length === 0) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    } catch (err) { logError("tab touchstart", err); }
   }, {passive: true});
 
   tabs.addEventListener("touchend", function(e){
-    if (startX === 0) return;
-    var endX = e.changedTouches[0].clientX;
-    var endY = e.changedTouches[0].clientY;
-    var dx = endX - startX;
-    var dy = endY - startY;
+    try {
+      if (startX === 0) return;
+      if (!e.changedTouches || e.changedTouches.length === 0) { startX = 0; return; }
+      var endX = e.changedTouches[0].clientX;
+      var endY = e.changedTouches[0].clientY;
+      var dx = endX - startX;
+      var dy = endY - startY;
 
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
-      var keys = Object.keys(GROUPS);
-      var idx = keys.indexOf(gCurrentGroup);
-      if (idx < 0) { startX = 0; return; }
-      e.preventDefault();
-      gTabSwipeHandled = true;
-      if (dx < 0 && idx < keys.length - 1) {
-        renderChart(keys[idx + 1]);
-      } else if (dx > 0 && idx > 0) {
-        renderChart(keys[idx - 1]);
-      } else {
-        gTabSwipeHandled = false;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+        var keys = Object.keys(GROUPS);
+        var idx = keys.indexOf(gCurrentGroup);
+        if (idx < 0) { startX = 0; return; }
+        gTabSwipeHandled = true;
+        if (dx < 0 && idx < keys.length - 1) {
+          renderChart(keys[idx + 1]);
+        } else if (dx > 0 && idx > 0) {
+          renderChart(keys[idx - 1]);
+        } else {
+          gTabSwipeHandled = false;
+        }
       }
-    }
-    startX = 0;
-  }, {passive: false});
+      startX = 0;
+    } catch (err) { logError("tab touchend", err); startX = 0; }
+  }, {passive: true});
 }
 
 function bindLegendSwipe() {
@@ -1159,53 +1271,62 @@ function bindLegendSwipe() {
   var SWIPE_THRESHOLD = 40;
 
   bar.addEventListener("touchstart", function(e){
-    if (e.touches.length === 0) return;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
+    try {
+      if (!e.touches || e.touches.length === 0) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    } catch (err) { logError("legend touchstart", err); }
   }, {passive: true});
 
   bar.addEventListener("touchend", function(e){
-    if (startX === 0) return;
-    var endX = e.changedTouches[0].clientX;
-    var endY = e.changedTouches[0].clientY;
-    var dx = endX - startX;
-    var dy = endY - startY;
+    try {
+      if (startX === 0) return;
+      if (!e.changedTouches || e.changedTouches.length === 0) { startX = 0; return; }
+      var endX = e.changedTouches[0].clientX;
+      var endY = e.changedTouches[0].clientY;
+      var dx = endX - startX;
+      var dy = endY - startY;
 
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
-      var group = GROUPS[gCurrentGroup];
-      var keys = group.series.map(function(s){ return s.key; });
-      if (keys.length === 0) { startX = 0; return; }
-      var idx = keys.indexOf(gHighlightedSeries);
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+        var group = GROUPS[gCurrentGroup];
+        var keys = group.series.map(function(s){ return s.key; });
+        if (keys.length === 0) { startX = 0; return; }
+        var idx = keys.indexOf(gHighlightedSeries);
 
-      if (dx < 0) {
-        // 左滑：下一个（循环）
-        idx = (idx + 1 >= keys.length) ? 0 : idx + 1;
-      } else {
-        // 右滑：上一个（循环）
-        idx = (idx - 1 < 0) ? keys.length - 1 : idx - 1;
+        if (dx < 0) {
+          // 左滑：下一个（循环）
+          idx = (idx + 1 >= keys.length) ? 0 : idx + 1;
+        } else {
+          // 右滑：上一个（循环）
+          idx = (idx - 1 < 0) ? keys.length - 1 : idx - 1;
+        }
+        toggleHighlight(keys[idx]);
       }
-      e.preventDefault();
-      toggleHighlight(keys[idx]);
-    }
-    startX = 0;
-  }, {passive: false});
+      startX = 0;
+    } catch (err) { logError("legend touchend", err); startX = 0; }
+  }, {passive: true});
 }
 
 /* ===== 触摸 / 鼠标事件 ===== */
-/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突。
-   手机上把 touchmove/touchend 挂到 document，防止手指滑出 chartArea 后丢失事件 */
+/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突 */
 function bindEvents() {
   if (!gChartArea) return;
 
   function getCssXFromTouch(e) {
-    if (e.touches && e.touches.length > 0) {
-      var rect = gChart.canvas.getBoundingClientRect();
-      return e.touches[0].clientX - rect.left;
-    }
+    try {
+      if (e.touches && e.touches.length > 0 && gChart && gChart.canvas) {
+        return e.touches[0].clientX - gChart.canvas.getBoundingClientRect().left;
+      }
+    } catch (err) { logError("getCssXFromTouch", err); }
     return null;
   }
   function getCssXFromMouse(e) {
-    return e.clientX - gChart.canvas.getBoundingClientRect().left;
+    try {
+      if (gChart && gChart.canvas) {
+        return e.clientX - gChart.canvas.getBoundingClientRect().left;
+      }
+    } catch (err) { logError("getCssXFromMouse", err); }
+    return null;
   }
 
   function scheduleMove(cssX) {
@@ -1220,82 +1341,104 @@ function bindEvents() {
   }
 
   gChartArea.addEventListener("touchstart", function(e){
-    if (e.touches.length === 0) return;
-    gIsDown = true;
-    clearTimeout(gHideTimer);
-    var cssX = getCssXFromTouch(e);
-    if (cssX !== null) scheduleMove(cssX);
-    e.preventDefault();
+    try {
+      if (!e.touches || e.touches.length === 0) return;
+      gIsDown = true;
+      clearTimeout(gHideTimer);
+      var cssX = getCssXFromTouch(e);
+      if (cssX !== null) scheduleMove(cssX);
+      if (e.cancelable) e.preventDefault();
+    } catch (err) { logError("chart touchstart", err); }
   }, {passive:false});
 
-  /* 用 document 监听 touchmove/touchend，避免手机滑出 canvas 区域后断掉 */
-  document.addEventListener("touchmove", function(e){
-    if (!gIsDown || e.touches.length === 0) return;
-    var cssX = getCssXFromTouch(e);
-    if (cssX !== null) scheduleMove(cssX);
-    e.preventDefault();
+  gChartArea.addEventListener("touchmove", function(e){
+    try {
+      if (!gIsDown || !e.touches || e.touches.length === 0) return;
+      var cssX = getCssXFromTouch(e);
+      if (cssX !== null) scheduleMove(cssX);
+      if (e.cancelable) e.preventDefault();
+    } catch (err) { logError("chart touchmove", err); }
   }, {passive:false});
 
-  document.addEventListener("touchend", function(e){
-    if (!gIsDown) return;
-    onEnd();
+  gChartArea.addEventListener("touchend", function(e){
+    try { onEnd(); } catch (err) { logError("chart touchend", err); }
   });
-  document.addEventListener("touchcancel", function(e){
-    if (!gIsDown) return;
-    onEnd();
+  gChartArea.addEventListener("touchcancel", function(e){
+    try { onEnd(); } catch (err) { logError("chart touchcancel", err); }
   });
 
   gChartArea.addEventListener("mousedown", function(e){
-    gIsDown = true;
-    clearTimeout(gHideTimer);
-    onMove(getCssXFromMouse(e));
+    try {
+      gIsDown = true;
+      clearTimeout(gHideTimer);
+      var x = getCssXFromMouse(e);
+      if (x !== null) onMove(x);
+    } catch (err) { logError("chart mousedown", err); }
   });
 
   document.addEventListener("mousemove", function(e){
-    if (!gIsDown) return;
-    scheduleMove(getCssXFromMouse(e));
+    try {
+      if (!gIsDown) return;
+      var x = getCssXFromMouse(e);
+      if (x !== null) scheduleMove(x);
+    } catch (err) { logError("document mousemove", err); }
   });
 
-  document.addEventListener("mouseup", onEnd);
-  document.addEventListener("mouseleave", function(){ if (gIsDown) onEnd(); });
+  document.addEventListener("mouseup", function(e){
+    try { onEnd(); } catch (err) { logError("document mouseup", err); }
+  });
+  document.addEventListener("mouseleave", function(e){
+    try { if (gIsDown) onEnd(); } catch (err) { logError("document mouseleave", err); }
+  });
 }
 
 function onMove(cssX) {
-  if (!gChart || !gChart.chartArea || !gParsedData) return;
+  try {
+    if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
 
-  var rect = gChart.canvas.getBoundingClientRect();
-  var dprX = gChart.canvas.width / rect.width;
-  var dprY = gChart.canvas.height / rect.height;
+    var rect = gChart.canvas.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    var dprX = gChart.canvas.width / rect.width;
+    var dprY = gChart.canvas.height / rect.height;
 
-  /* 限制到 canvas 可视区域内 */
-  var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
-  var canvasX = cssToCanvasX(clampedCssX, dprX);
+    /* 限制到 canvas 可视区域内 */
+    var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
+    var canvasX = cssToCanvasX(clampedCssX, dprX);
 
-  var ca = gChart.chartArea;
-  var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
-  var idx = getIndexAtCanvasX(clampedCanvasX);
-  if (idx < 0) return;
+    var ca = gChart.chartArea;
+    var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
+    var idx = getIndexAtCanvasX(clampedCanvasX);
+    if (idx < 0) return;
 
-  if (idx !== gLastCrossIdx) {
-    gLastCrossIdx = idx;
-    showCrosshair(clampedCssX, idx, dprY);
-    if (gTapHint) gTapHint.style.opacity = "0";
-  } else {
-    movePriceTagsOnly(clampedCssX);
+    if (idx !== gLastCrossIdx) {
+      gLastCrossIdx = idx;
+      showCrosshair(clampedCssX, idx, dprX, dprY);
+      if (gTapHint) gTapHint.style.opacity = "0";
+    } else {
+      movePriceTagsOnly(clampedCssX);
+    }
+  } catch (err) {
+    logError("onMove", err);
   }
 }
 
 function onEnd() {
-  gIsDown = false;
-  clearTimeout(gHideTimer);
-  gHideTimer = setTimeout(function(){
-    gCrossLine.style.display = "none";
-    gClTime.style.display = "none";
-    gClTop.style.display = "none";
-    removePriceTags();
-    gLastCrossIdx = -1;
-    if (gTapHint) gTapHint.style.opacity = "1";
-  }, 2000);
+  try {
+    gIsDown = false;
+    clearTimeout(gHideTimer);
+    gHideTimer = setTimeout(function(){
+      try {
+        gCrossLine.style.display = "none";
+        gClTime.style.display = "none";
+        gClTop.style.display = "none";
+        removePriceTags();
+        gLastCrossIdx = -1;
+        if (gTapHint) gTapHint.style.opacity = "1";
+      } catch (err) { logError("onEnd timeout", err); }
+    }, 2000);
+  } catch (err) {
+    logError("onEnd", err);
+  }
 }
 
 function init() {
