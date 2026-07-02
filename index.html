@@ -1099,7 +1099,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 11:07";
+var GEN_TIME = "2026-07-02 11:12";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1430,29 +1430,35 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标系统（重写） =====
+     * ===== 坐标系统（最终修正版）=====
      *
-     * Chart.js canvas 内部坐标系：
-     *   pt.x, pt.y 是 canvas 物理像素（含 devicePixelRatio）
-     *   chartArea = {left, top, right, bottom} 也是 canvas 物理像素
+     * Chart.js 的 pt.x / pt.y 是 canvas 内部坐标（物理像素）。
+     * 但 canvas 可能被 CSS 缩放（devicePixelRatio），所以：
+     *   CSS像素 = 物理像素 / dpr
      *
-     * CSS 显示坐标（我们设置 DOM left/top 用的）：
-     *   cssX/cssY = canvas物理像素 / dpr
+     * 关键发现：Chart.js 的 getBoundingClientRect() 返回的是 canvas
+     * 在页面中的实际显示尺寸，而 canvas.width/height 是物理像素。
      *
-     * 但 DOM 元素放在 #chartArea（包裹 canvas 的 div）里，
-     * 所以需要知道 canvas 在 div 中的偏移。
+     * 数据点 pt.y 的含义：距离 canvas 顶部的物理像素距离。
+     * 对应到 CSS：pt.y / dpr = 距离 canvas 顶部的 CSS 像素。
      *
-     * 关键：canvas 在 responsive 模式下可能不等于 chartArea div 的完整尺寸。
-     * 最可靠的方法：用 canvas.getBoundingClientRect() 获取 canvas 在视口的位置，
-     * 然后把数据点的 canvas 坐标转成视口坐标，再转成 chartArea 的内部坐标。
+     * DOM 放在 #chartArea（canvas 的父 div）里，用 position:absolute。
+     * 所以 left/top 就是相对于 chartArea 左上角的偏移。
+     *
+     * 如果 canvas 和 chartArea 尺寸完全一样（通常如此），那么：
+     *   finalX = pt.x / dpr
+     *   finalY = pt.y / dpr
+     * 就直接是正确的坐标！
+     *
+     * 但如果 canvas 比 chartArea 小（有 padding/margin），需要加上偏移。
      */
     var canvasEl = gChart.canvas;
     var canvasRect = canvasEl.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
 
-    /* canvas 相对于 chartArea 的偏移 */
-    var canvasOffsetX = canvasRect.left - areaRect.left;
-    var canvasOffsetY = canvasRect.top - areaRect.top;
+    /* canvas 在 chartArea 内的偏移 */
+    var offsetX = canvasRect.left - areaRect.left;
+    var offsetY = canvasRect.top - areaRect.top;
 
     /* 收集所有可见 series 的数据点信息 */
     var items = [];
@@ -1465,17 +1471,13 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
 
-      /* 获取 Chart.js 数据点在 canvas 物理像素中的位置 */
+      /* 获取 Chart.js 数据点位置 */
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 转为 CSS 像素（相对于 canvas 左上角） */
-      var ptCssX = pt.x / dprX;
-      var ptCssY = pt.y / dprY;
-
-      /* 转为相对于 chartArea 的坐标 */
-      var finalX = canvasOffsetX + ptCssX;
-      var finalY = canvasOffsetY + ptCssY;
+      /* 转为 CSS 像素，再加上 canvas 在 chartArea 中的偏移 */
+      var finalX = pt.x / dprX + offsetX;
+      var finalY = pt.y / dprY + offsetY;
 
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: finalX, y: finalY});
     }
@@ -1484,6 +1486,14 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.y - b.y; });
+
+    /* 调试：在控制台输出坐标信息 */
+    if (window._gDebug !== false) {
+      console.log("[price-tag] areaRect:", Math.round(areaRect.width) + "x" + Math.round(areaRect.height), "offset:" + Math.round(offsetX) + "," + Math.round(offsetY));
+      for (var di = 0; di < items.length; di++) {
+        console.log("  [" + di + "] " + items[di].key + " => x:" + items[di].x.toFixed(1) + " y:" + items[di].y.toFixed(1));
+      }
+    }
 
     var DOT_R = 4; /* 圆点半径 */
     var GAP = 1;   /* 标签与圆点间距（最小化） */
@@ -1540,26 +1550,37 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       /* 垂直：紧贴数据点，上下交错 */
       var tagTop;
       if (i % 2 === 0) {
-        /* 偶数：标签底部贴在数据点顶部 */
+        /* 偶数：标签底部贴在数据点顶部（圆点上方） */
         tagTop = it.y - DOT_R - GAP - th;
       } else {
-        /* 奇数：标签顶部贴在数据点底部 */
+        /* 奇数：标签顶部贴在数据点底部（圆点下方） */
         tagTop = it.y + DOT_R + GAP;
       }
 
-      /* 水平：紧贴圆点右侧，超出边界则换左侧 */
-      var tagLeft = it.x + DOT_R + GAP;
-      if (tagLeft + tw > areaRect.width) {
-        tagLeft = it.x - DOT_R - GAP - tw;
+      /* 水平：紧挨圆点右边缘 */
+      var tagLeft = it.x + DOT_R + 2;
+
+      /* 右侧放不下 → 紧挨圆点左边缘显示在左边 */
+      if (tagLeft + tw > areaRect.width - 2) {
+        tagLeft = it.x - DOT_R - 2 - tw;
       }
-      if (tagLeft < 0) tagLeft = Math.max(2, it.x - tw / 2);
+      /* 左侧也放不下 → 居中塞进去 */
+      if (tagLeft < 2) {
+        tagLeft = it.x - tw / 2;
+      }
 
-      /* 边界保护 */
-      if (tagTop < 2) tagTop = it.y + DOT_R + GAP;
-      if (tagTop + th > areaRect.height - 2) tagTop = areaRect.height - th - 2;
+      /* 边界保护：垂直方向 */
+      if (tagTop < 2) {
+        /* 顶部超出 → 放到圆点下面 */
+        tagTop = it.y + DOT_R + GAP;
+      }
+      if (tagTop + th > areaRect.height - 2) {
+        /* 底部超出 → 放到圆点上面 */
+        tagTop = it.y - DOT_R - GAP - th;
+      }
 
-      rt.tag.style.left = tagLeft + "px";
-      rt.tag.style.top = tagTop + "px";
+      rt.tag.style.left = Math.round(tagLeft) + "px";
+      rt.tag.style.top = Math.round(tagTop) + "px";
     }
 
     /* 移除多余的旧标签和旧圆点 */
