@@ -1669,7 +1669,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 14:14";
+var GEN_TIME = "2026-07-02 14:24";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1999,16 +1999,20 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标转换 v6 —— 修正 chartArea 偏移 =====
+     * ===== 坐标转换 v7 —— 百分比定位法（终极方案）=====
      *
-     * 手机调试浮层数据揭示根因：
-     *   Chart.js meta.data[idx].y 是 canvas 内部坐标，原点在 canvas 左上角(0,0)
-     *   但 chartArea 并不从 (0,0) 开始——它有 {top, left} 偏移（留给标题/图例等）
-     *   所以 pt.y 的实际范围是 [ca.top, ca.top + ca.height]
+     * 前面 v1~v6 尝试了各种像素换算（dpr除法、getBoundingClientRect偏移、
+     * canvas缩放因子、chartArea偏移），在手机/微信浏览器上全部失败。
      *
-     * 正确转换公式：
-     *   cssY = (pt.y - ca.top) × (areaH / ca.height)
-     *   这样 pt.y=ca.top → cssY=0, pt.y=ca.bottom → cssY=areaH ✓
+     * 根因：#chartArea div 的实际渲染尺寸和 Canvas 内部坐标系的映射关系，
+     * 在不同设备/浏览器中不一致。任何基于像素的换算都会在某种环境下出错。
+     *
+     * 终极方案：用 **百分比定位**，让浏览器自己处理坐标映射。
+     *
+     *   X → cssX / chartArea.offsetWidth × 100% （与竖线同源）
+     *   Y → (pt.y - ca.top) / ca.height × 100% （Chart.js 内部比例）
+     *
+     * 百分比是相对于 #chartArea 的，浏览器会自动处理 dpr、缩放、padding 等。
      */
     var ca = gChart.chartArea;
     var areaW = gChartArea.offsetWidth;
@@ -2028,143 +2032,107 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* X: 直接用 cssX（触摸事件坐标，与竖线一致） */
-      /* Y: 减去 ca.top 后再按比例缩放 */
-      var x = cssX;
-      var y = (pt.y - ca.top) * (areaH / ca.height);
+      /* 百分比坐标（相对于 #chartArea） */
+      var pctX = (cssX / areaW) * 100;
+      var pctY = ((pt.y - ca.top) / ca.height) * 100;
 
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y, ptY_raw: pt.y});
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit,
+        pctX: pctX, pctY: pctY, ptY_raw: pt.y});
     }
 
     if (items.length === 0) return;
 
     /* 按 Y 从小到大排序 */
-    items.sort(function(a, b){ return a.y - b.y; });
+    items.sort(function(a, b){ return a.pctY - b.pctY; });
 
     /* 调试日志 + 手机可视浮层 */
     if (window._gDebug !== false) {
-      var dbgInfo = "areaCSS:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " ca:" + Math.round(ca.left) + "," + Math.round(ca.top) + "-" +
-        Math.round(ca.right) + "," + Math.round(ca.bottom) +
+      var dbgInfo = "area:" + Math.round(areaW) + "x" + Math.round(areaH) +
+        " caH:" + Math.round(ca.height) +
         " cssX:" + Math.round(cssX);
       for (var di = 0; di < items.length; di++) {
-        dbgInfo += " | [" + di + "]" + items[di].key.slice(0,6) +
-          "=(" + Math.round(items[di].x) + "," + Math.round(items[di].y) + ")" +
+        dbgInfo += " | " + items[di].key.slice(0,8) +
+          "=(" + items[di].pctX.toFixed(1) + "%," + items[di].pctY.toFixed(1) + "%)" +
           " rawY=" + Math.round(items[di].ptY_raw);
       }
       console.log("[price-tag] " + dbgInfo);
 
-      /* 浮层显示（手机上也能看到） */
       var dbgEl = document.getElementById("_dbgFloat");
       if (!dbgEl) {
         dbgEl = document.createElement("div");
         dbgEl.id = "_dbgFloat";
-        dbgEl.style.cssText = "position:fixed;top:2px;right:2px;z-index:9999;background:rgba(255,0,0,0.85);color:#fff;font-size:10px;padding:4px;max-width:300px;word-break:break-all;font-family:monospace;";
+        dbgEl.style.cssText = "position:fixed;top:2px;right:2px;z-index:9999;background:rgba(255,0,0,0.85);color:#fff;font-size:10px;padding:4px;max-width:320px;word-break:break-all;font-family:monospace;";
         document.body.appendChild(dbgEl);
       }
       dbgEl.textContent = dbgInfo;
     }
 
-    var DOT_R = 4;
-    var MARGIN = 6;
-    var TAG_SPACING = 2;
+    var DOT_R_PCT = (4 / areaW) * 100;  /* 圆点半径转百分比（基于宽度） */
+    var DOT_R_PCT_Y = (4 / areaH) * 100; /* Y方向圆点半径 */
+    var MARGIN_PCT = (6 / areaW) * 100;
+    var GAP_PCT = (2 / areaH) * 100;
 
-    /* 先创建所有标签获取真实尺寸 */
+    /* 先创建所有标签获取真实尺寸（像素），再转为百分比 */
     var rawTags = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var tag = existing[it.key];
-      if (tag) {
-        delete existing[it.key];
-      } else {
-        tag = document.createElement("div");
-        tag.className = "price-tag";
-        tag.dataset.key = it.key;
-        gChartArea.appendChild(tag);
-      }
+      if (tag) { delete existing[it.key]; }
+      else { tag = document.createElement("div"); tag.className = "price-tag"; tag.dataset.key = it.key; gChartArea.appendChild(tag); }
       tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
-      tag.style.display = "flex";
-      tag.style.visibility = "hidden";
-      tag.style.left = "0px"; tag.style.top = "0px";
-      tag.style.transform = "none";
-      rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
+      tag.style.display = "flex"; tag.style.visibility = "hidden";
+      tag.style.left = "0px"; tag.style.top = "0px"; tag.style.transform = "none";
+      var twPx = tag.offsetWidth || 80;
+      var thPx = tag.offsetHeight || 20;
+      rawTags.push({tag: tag, item: it, wPct: (twPx / areaW) * 100, hPct: (thPx / areaH) * 100});
     }
 
-    /*
-     * 布局：标签紧贴圆点，不重叠
-     * 策略：
-     *   - 每个标签紧贴自己对应的数据点（圆点旁边2px）
-     *   - 碰撞检测，重叠时自动推开
-     */
-
-    /* 左右偏好 */
-    var maxTw = 0;
-    for (var i = 0; i < rawTags.length; i++) { if (rawTags[i].w > maxTw) maxTw = rawTags[i].w; }
-    var rightSpace = areaW - (items[items.length - 1].x + DOT_R);
-    var preferRight = (rightSpace >= maxTw + MARGIN);
-
-    /* 初始位置：每个标签紧贴自己的圆点 */
+    /* 初始位置：每个标签紧贴自己的数据点（百分比坐标） */
     var placements = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      var rt = rawTags[i];
-      var tw = rt.w;
-      var th = rt.h;
-
-      /* 默认放右边 */
-      var tagLeft = it.x + DOT_R + 2;
-      var tagTop = it.y + DOT_R + 2;
-
-      /* 右边不够 → 放左边 */
-      if (tagLeft + tw > areaW - MARGIN) {
-        tagLeft = it.x - DOT_R - tw - 2;
-      }
-
-      placements.push({left: tagLeft, top: tagTop, w: tw, h: th});
+      /* 默认放右下方 */
+      var pLeft = it.pctX + DOT_R_PCT + (2 / areaW) * 100;
+      var pTop = it.pctY + DOT_R_PCT_Y + GAP_PCT;
+      placements.push({left: pLeft, top: pTop, w: rawTags[i].wPct, h: rawTags[i].hPct});
     }
 
-    /* 碰撞检测：从上往下逐对检查，有碰撞就向下推 */
+    /* 碰撞检测 */
     for (var i = 0; i < placements.length; i++) {
       for (var j = i + 1; j < placements.length; j++) {
-        var a = placements[i];
-        var b = placements[j];
-
-        var overlapX = !(a.left + a.w + TAG_SPACING < b.left || b.left + b.w + TAG_SPACING < a.left);
-        var overlapY = !(a.top + a.h + TAG_SPACING < b.top || b.top + b.h + TAG_SPACING < a.top);
-
-        if (overlapX && overlapY) {
-          b.top = a.top + a.h + TAG_SPACING;
-        }
+        var a = placements[i]; var b = placements[j];
+        var ovX = !(a.left + a.w + MARGIN_PCT < b.left || b.left + b.w + MARGIN_PCT < a.left);
+        var ovY = !(a.top + a.h + GAP_PCT < b.top || b.top + b.h + GAP_PCT < a.top);
+        if (ovX && ovY) { b.top = a.top + a.h + GAP_PCT; }
       }
     }
 
-    /* 应用位置 + 边界钳制 */
+    /* 应用位置 —— 百分比定位 */
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var rt = rawTags[i];
       var pl = placements[i];
 
+      /* 圆点 */
       var dot = existingDots[it.key];
       if (dot) { delete existingDots[it.key]; }
-      else {
-        dot = document.createElement("div");
-        dot.className = "highlight-dot"; dot.dataset.key = it.key;
-        gChartArea.appendChild(dot);
-      }
+      else { dot = document.createElement("div"); dot.className = "highlight-dot"; dot.dataset.key = it.key; gChartArea.appendChild(dot); }
       dot.style.backgroundColor = it.color;
-      dot.style.left = (it.x - DOT_R) + "px";
-      dot.style.top = (it.y - DOT_R) + "px";
+      dot.style.left = (it.pctX - DOT_R_PCT) + "%";
+      dot.style.top = (it.pctY - DOT_R_PCT_Y) + "%";
       dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
-      /* 标签边界保护 */
-      var fTop = pl.top;
-      var fLeft = pl.left;
-      if (fLeft < MARGIN) fLeft = MARGIN;
-      if (fLeft + pl.w > areaW - MARGIN) fLeft = areaW - MARGIN - pl.w;
-      if (fTop < MARGIN) fTop = it.y + DOT_R + 2;
-      if (fTop + pl.h > areaH - MARGIN) fTop = areaH - MARGIN - pl.h;
+      /* 标签：边界钳制后用百分比设置 */
+      var fTop = pl.top; var fLeft = pl.left;
+      if (fLeft < MARGIN_PCT) fLeft = MARGIN_PCT;
+      if (fLeft + rt.wPct > 100 - MARGIN_PCT) fLeft = 100 - MARGIN_PCT - rt.wPct;
+      if (fTop < GAP_PCT) fTop = it.pctY + DOT_R_PCT_Y + GAP_PCT;
+      if (fTop + rt.hPct > 100 - GAP_PCT) fTop = 100 - GAP_PCT - rt.hPct;
 
       rt.tag.style.visibility = "visible";
+      rt.tag.style.left = fLeft + "%";
+      rt.tag.style.top = fTop + "%";
+    }
       rt.tag.style.left = Math.round(fLeft) + "px";
       rt.tag.style.top = Math.round(fTop) + "px";
     }
@@ -2182,24 +2150,29 @@ function moveCrosshairOnly(cssX) {
     if (!gChartArea || !gCrossLine || !gChart) return;
     var areaW = gChartArea.offsetWidth;
 
-    /* cssX 已经是相对于 canvas（=chartArea）的CSS坐标 */
-    gCrossLine.style.left = cssX + "px";
+    /* 边界限制：竖线不出 chartArea */
+    var boundedX = cssX;
+    if (boundedX < 0) boundedX = 0;
+    if (boundedX > areaW) boundedX = areaW;
 
-    /* 圆点 X 跟随（Y不变） */
+    gCrossLine.style.left = boundedX + "px";
+
+    /* 圆点 X 跟随（Y不变，保持百分比） */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(dots, function(el){
-      el.style.left = cssX + "px";
+      el.style.left = ((boundedX / areaW) * 100) + "%";
     });
 
     /* 标签 X 跟随移动，Y保持不变 */
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){
-      var tw = el.offsetWidth || 80;
-      var newLeft = cssX + 10;
-      if (newLeft + tw + 4 > areaW && cssX - tw - 10 >= 0) {
-        newLeft = cssX - tw - 10;
+      var twPx = el.offsetWidth || 80;
+      var twPct = (twPx / areaW) * 100;
+      var newLeftPct = (boundedX / areaW) * 100 + twPct * 0.15;
+      if (newLeftPct + twPct > 100 - 1 && (boundedX / areaW * 100) - twPct * 0.15 >= 0) {
+        newLeftPct = (boundedX / areaW) * 100 - twPct * 1.15;
       }
-      el.style.left = newLeft + "px";
+      el.style.left = Math.max(0.5, newLeftPct) + "%";
     });
   } catch (err) {
     logError("moveCrosshairOnly", err);
