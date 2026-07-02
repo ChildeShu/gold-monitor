@@ -910,7 +910,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 10:23";
+var GEN_TIME = "2026-07-02 10:30";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1278,15 +1278,13 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.cssY - b.cssY; });
 
-    /* 布局策略：
-       - 标签紧挨着数据点（圆点旁边）
-       - 优先放数据点右侧，靠边则放左侧
-       - 多个标签时以数据点为中心上下交错排列
+    /* 布局策略（最终版）：
+       - 标签紧挨数据点圆点，间距 2px
+       - 上下交错：偶数在圆点上方，奇数在下方
+       - 右侧优先，靠边自动换左侧
     */
-    var placed = [];
     var labels = [];
-    var TAG_H = 22;
-    var TAG_GAP = 4;
+    var GAP = 2; /* 标签与圆点的间距 */
 
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
@@ -1311,15 +1309,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* 标签垂直位置：奇数在数据点下方，偶数在上方，紧挨着 */
-      var tagTop;
-      if (i % 2 === 1) {
-        tagTop = cssY + TAG_GAP;   /* 下方：紧贴圆点 */
-      } else {
-        tagTop = cssY - TAG_H - TAG_GAP; /* 上方：紧贴圆点 */
-      }
-
-      /* 创建标签获取尺寸 */
+      /* 创建标签 */
       var tag = existing[it.key];
       if (tag) {
         delete existing[it.key];
@@ -1331,30 +1321,31 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       }
       tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
       tag.style.display = "flex";
-      tag.style.left = "0px";
-      tag.style.top = "0px";
+      tag.style.left = "0px"; tag.style.top = "0px";
       tag.style.transform = "none";
-      tag.style.background = "";
-      tag.style.borderRadius = "";
-      tag.style.padding = "";
-      var tagWidth = tag.offsetWidth || 80;
-      var tagHeight = tag.offsetHeight || TAG_H;
+      tag.style.background = ""; tag.style.borderRadius = ""; tag.style.padding = "";
+      var tw = tag.offsetWidth || 80;
+      var th = tag.offsetHeight || 20;
 
-      /* 水平位置：优先右侧，不够就左侧 */
-      var left = areaCssX + 8;
-      var fitsRight = (left + tagWidth + 4 <= areaRight);
-      if (!fitsRight) {
-        left = areaCssX - tagWidth - 8;
-        /* 左侧也超了就尽量塞进去 */
-        if (left < areaLeft) left = Math.max(areaLeft, areaCssX - tagWidth / 2);
+      /* 垂直：紧挨圆点 */
+      var tt;
+      if (i % 2 === 1) {
+        tt = cssY + 4 + GAP;   /* 圆点半径4px + 间距 */
+      } else {
+        tt = cssY - th - 4 - GAP; /* 圆点半径4px + 间距 */
       }
 
-      /* 确保不超出边界 */
-      if (tagTop < areaTop) tagTop = areaTop + 2;
-      if (tagTop + tagHeight > areaBottom) tagTop = areaBottom - tagHeight - 2;
+      /* 水平：右侧优先，靠边换左侧 */
+      var tl = areaCssX + 10;
+      if (tl + tw + 2 > areaRight) tl = areaCssX - tw - 10;
+      if (tl < areaLeft) tl = Math.max(areaLeft, areaCssX - tw / 2);
 
-      tag.style.left = left + "px";
-      tag.style.top = tagTop + "px";
+      /* 边界钳位 */
+      if (tt < 2) tt = 2;
+      if (tt + th > areaBottom - 2) tt = areaBottom - th - 2;
+
+      tag.style.left = tl + "px";
+      tag.style.top = tt + "px";
 
       labels.push({el: tag, cssY: cssY});
     }
