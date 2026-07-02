@@ -1762,9 +1762,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 16:23": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4064.99,
+      "intl_unit": "美元/盎司",
+      "cny_price": 886.6699,
+      "update_time": "2026-07-02 15:05:30",
+      "prev_close": null
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.454,
+      "prev_close": 8.255,
+      "change": 0.19899999999999984,
+      "change_rate": 2.410660205935794
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.454,
+        "gold_price": 845.4,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.475,
+        "gold_price": 847.5,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.20399999999999885,
+        "change_rate": 2.466449038810287
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.851,
+        "gold_price": 885.1,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.2090000000000014,
+        "change_rate": 2.418421661652412
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.883,
+        "gold_price": 888.3,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.2129999999999992,
+        "change_rate": 2.4567474048442817
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.454,
+        "gold_price": 845.4,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 16:20";
+var GEN_TIME = "2026-07-02 16:30";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2051,15 +2146,20 @@ function toggleHighlight(key) {
 /* ===== 竖线 + 价格标签（全部从数据点坐标派生，不依赖手指位置） ===== */
 
 /**
- * 从 Chart.js 数据点获取百分比坐标（相对于 #chartArea）
- * 返回 {pctX, points: [{key,color,value,decimals,unit,pctX,pctY}]} 或 null
- * pctX/pctY 均为 [0,100] 百分比，PC/手机通用
+ * 从 Chart.js 数据点获取百分比坐标（相对于 #chartArea 容器）
+ *
+ * 关键：dp.x/dp.y 是 canvas 内部像素坐标，必须除以 canvas 整体尺寸（而非 chartArea 子区域）
+ * 因为 CSS 百分比是相对 #chartArea 的，而 canvas width:100% 填满 #chartArea
+ * 所以 pct = dp / canvasSize × 100 才是正确的容器百分比
  */
 function getDataPointPos(idx) {
   try {
-    if (!gChart || !gChart.chartArea || !gChartArea || !gParsedData) return null;
+    if (!gChart || !gChart.chartArea || !gChartArea || !gChart.canvas || !gParsedData) return null;
 
-    var ca = gChart.chartArea;
+    var cvW = gChart.canvas.width;   /* canvas 内部像素宽度 */
+    var cvH = gChart.canvas.height;  /* canvas 内部像素高度 */
+    if (!cvW || !cvH) return null;
+
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
@@ -2080,16 +2180,17 @@ function getDataPointPos(idx) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
+      /* 相对于整个 canvas 的百分比（= 相对于 #chartArea 的百分比） */
+      var px = (pt.x / cvW) * 100;
+      var py = (pt.y / cvH) * 100;
+
       /* 用首个可见数据点的 X 作为竖线位置 */
-      if (linePctX === null) {
-        linePctX = ((pt.x - ca.left) / ca.width) * 100;
-      }
+      if (linePctX === null) { linePctX = px; }
 
       points.push({
         key: s.key, color: s.color, value: v,
         decimals: s.decimals, unit: s.unit,
-        pctX: ((pt.x - ca.left) / ca.width) * 100,
-        pctY: ((pt.y - ca.top) / ca.height) * 100
+        pctX: px, pctY: py
       });
     }
 
