@@ -1099,7 +1099,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 11:17";
+var GEN_TIME = "2026-07-02 11:28";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1389,11 +1389,17 @@ function showCrosshair(cssX, idx, dprX, dprY) {
   try {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
 
-    /* cssX 是相对于 canvas 的，转换为 chartArea 坐标 */
-    var canvasEl = gChart.canvas;
-    var canvasRect = canvasEl.getBoundingClientRect();
+    /*
+     * cssX 来自 getCssXFromTouch/Mouse = e.clientX - canvas.getBoundingClientRect().left
+     * 这是相对于 canvas 左边缘的 CSS 像素。
+     *
+     * 竖线和标签都在 #chartArea（canvas父div）里。
+     * 需要知道 canvas 在 #chartArea 内的位置偏移。
+     */
+    var canvasRect = gChart.canvas.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
     var offsetX = canvasRect.left - areaRect.left;
+    /* 竖线的 X = cssX + offsetX (chartArea坐标系) */
     var areaCssX = cssX + offsetX;
 
     gCrossLine.style.left = areaCssX + "px";
@@ -1405,8 +1411,8 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
     gClTime.style.display = "block";
 
-    /* 更新竖线旁价格标签（挨着每条K线数据点） */
-    updatePriceTags(cssX, idx, dprX, dprY);
+    /* 更新竖线旁价格标签 —— 传入 chartArea 坐标系的 X */
+    updatePriceTags(areaCssX, idx, dprX, dprY);
   } catch (err) {
     logError("showCrosshair", err);
   }
@@ -1430,15 +1436,19 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标系统 —— 最简单可靠的方法 =====
+     * ===== 坐标系统（最终正确版）=====
      *
-     * Chart.js 数据点 pt.x / pt.y 是 canvas 物理像素坐标。
-     * canvas 的 CSS 尺寸 = 物理尺寸 / devicePixelRatio
-     * canvas 用 CSS 100% 填充 #chartArea
-     * 所以：CSS坐标(相对于#chartArea) = pt.x / dprX
+     * cssX 参数已经是 chartArea 坐标系（showCrosshair 中加了 offsetX）。
      *
-     * 不需要 getBoundingClientRect，不需要偏移计算。
+     * Chart.js 数据点 pt.x / pt.y 是 canvas 物理像素。
+     * 需要转成 chartArea 坐标系：
+     *   1. pt.x / dprX = 相对于 canvas 左边缘的 CSS 像素
+     *   2. + canvas 在 chartArea 中的偏移 = chartArea 内的绝对坐标
      */
+    var canvasRect = gChart.canvas.getBoundingClientRect();
+    var areaRect = gChartArea.getBoundingClientRect();
+    var cOffsetX = canvasRect.left - areaRect.left;
+    var cOffsetY = canvasRect.top - areaRect.top;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
 
@@ -1457,11 +1467,11 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 转为 CSS 像素（就是 #chartArea 内的绝对定位坐标） */
-      var x = pt.x / dprX;
-      var y = pt.y / dprY;
+      /* 转为 chartArea 坐标系的绝对坐标 */
+      var x = pt.x / dprX + cOffsetX;
+      var y = pt.y / dprY + cOffsetY;
 
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y, ptX: pt.x, ptY: pt.y});
     }
 
     if (items.length === 0) return;
@@ -1471,9 +1481,14 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
     /* 调试：在控制台输出坐标信息 */
     if (window._gDebug !== false) {
-      console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) + " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2));
+      console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
+        " canvasOffset:" + Math.round(cOffsetX) + "," + Math.round(cOffsetY) +
+        " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2) +
+        " lineX:" + cssX.toFixed(1));
       for (var di = 0; di < items.length; di++) {
-        console.log("  [" + di + "] " + items[di].key + " => x:" + items[di].x.toFixed(1) + " y:" + items[di].y.toFixed(1));
+        console.log("  [" + di + "] " + items[di].key +
+          " => chartArea(" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")" +
+          " | canvasPt: pt=" + (items[di].ptX || "?") + "," + (items[di].ptY || "?"));
       }
     }
 
