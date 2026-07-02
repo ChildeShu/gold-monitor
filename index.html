@@ -910,7 +910,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 10:19";
+var GEN_TIME = "2026-07-02 10:23";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1278,19 +1278,13 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.cssY - b.cssY; });
 
-    /* 布局策略（按用户要求重写）：
-       - 所有标签以 K 线交点的中心点为基准，向上平铺排列
-       - 标签水平位置在竖线右侧（紧挨着数据点）
-       - 如果靠边显示不下（右侧空间不够），改用 tooltip 气泡样式
+    /* 布局策略：
+       - 标签紧挨着数据点（圆点旁边）
+       - 优先放数据点右侧，靠边则放左侧
+       - 多个标签时以数据点为中心上下交错排列
     */
     var placed = [];
     var labels = [];
-    /* 计算所有数据点的中心 Y */
-    var centerY = 0;
-    for (var ci = 0; ci < items.length; ci++) centerY += items[ci].cssY;
-    centerY = centerY / items.length;
-
-    /* 从中心点开始，标签向上平铺：第1个在中心点上方，第2个在第1个上方... */
     var TAG_H = 22;
     var TAG_GAP = 4;
 
@@ -1298,7 +1292,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var it = items[i];
       var cssY = it.cssY;
 
-      /* 圆点：始终在数据点 */
+      /* 圆点：始终在数据点位置 */
       var dot = existingDots[it.key];
       if (dot) {
         delete existingDots[it.key];
@@ -1317,10 +1311,15 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* 标签垂直位置：从中心点向上平铺 */
-      var tagTop = centerY - (i + 1) * (TAG_H + TAG_GAP);
+      /* 标签垂直位置：奇数在数据点下方，偶数在上方，紧挨着 */
+      var tagTop;
+      if (i % 2 === 1) {
+        tagTop = cssY + TAG_GAP;   /* 下方：紧贴圆点 */
+      } else {
+        tagTop = cssY - TAG_H - TAG_GAP; /* 上方：紧贴圆点 */
+      }
 
-      /* 计算水平位置——先创建标签获取实际宽度 */
+      /* 创建标签获取尺寸 */
       var tag = existing[it.key];
       if (tag) {
         delete existing[it.key];
@@ -1335,41 +1334,29 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       tag.style.left = "0px";
       tag.style.top = "0px";
       tag.style.transform = "none";
+      tag.style.background = "";
+      tag.style.borderRadius = "";
+      tag.style.padding = "";
       var tagWidth = tag.offsetWidth || 80;
       var tagHeight = tag.offsetHeight || TAG_H;
 
+      /* 水平位置：优先右侧，不够就左侧 */
       var left = areaCssX + 8;
-      var useTooltipStyle = false;
-
-      /* 检查右侧是否放得下 */
-      if (left + tagWidth + 6 > areaRight) {
-        /* 放不下，改用 tooltip 气泡样式：放在数据点左上角 */
+      var fitsRight = (left + tagWidth + 4 <= areaRight);
+      if (!fitsRight) {
         left = areaCssX - tagWidth - 8;
-        if (left < areaLeft) {
-          /* 左边也放不下，用 tooltip 居中显示在数据点上方 */
-          left = areaCssX - tagWidth / 2;
-          useTooltipStyle = true;
-        }
+        /* 左侧也超了就尽量塞进去 */
+        if (left < areaLeft) left = Math.max(areaLeft, areaCssX - tagWidth / 2);
       }
 
-      /* 确保标签不超出顶部边界 */
-      if (tagTop < areaTop + 4) {
-        /* 如果超出顶部，从数据点向下平铺 */
-        tagTop = centerY + i * (TAG_H + TAG_GAP);
-        if (tagTop + tagHeight > areaBottom - 4) tagTop = areaBottom - tagHeight - 4;
-      }
+      /* 确保不超出边界 */
+      if (tagTop < areaTop) tagTop = areaTop + 2;
+      if (tagTop + tagHeight > areaBottom) tagTop = areaBottom - tagHeight - 2;
 
       tag.style.left = left + "px";
       tag.style.top = tagTop + "px";
 
-      if (useTooltipStyle) {
-        tag.style.background = "rgba(14,14,26,0.96)";
-        tag.style.borderRadius = "6px";
-        tag.style.padding = "3px 8px";
-      }
-
       labels.push({el: tag, cssY: cssY});
-    }
     }
 
     /* 移除多余的旧标签和旧圆点 */
