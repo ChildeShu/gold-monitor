@@ -1669,7 +1669,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 14:02";
+var GEN_TIME = "2026-07-02 14:14";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1999,25 +1999,20 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标转换 v5 —— 触发式坐标法 =====
+     * ===== 坐标转换 v6 —— 修正 chartArea 偏移 =====
      *
-     * 核心问题总结（经过 PC + 手机多次验证）：
-     *   - 竖线位置始终正确 → 说明 cssX (e.clientX - canvas.getBoundingClientRect().left) 可靠
-     *   - 圆点/标签位置在手机上飘走 → 说明 pt.x * (clientWidth/canvas.width) 不可靠
-     *   - 根因：手机/微信浏览器中 canvas.width 和 clientWidth 的比值异常
+     * 手机调试浮层数据揭示根因：
+     *   Chart.js meta.data[idx].y 是 canvas 内部坐标，原点在 canvas 左上角(0,0)
+     *   但 chartArea 并不从 (0,0) 开始——它有 {top, left} 偏移（留给标题/图例等）
+     *   所以 pt.y 的实际范围是 [ca.top, ca.top + ca.height]
      *
-     * 新方案：
-     *   X坐标 → 直接使用传入的 cssX（与竖线同源，已验证正确）
-     *   Y坐标 → 用 Chart.js Y轴 scale 的 getPixelForValue 获取内部像素，
-     *           再通过 chartArea CSS高度 / chartArea.height 的比值转换
+     * 正确转换公式：
+     *   cssY = (pt.y - ca.top) × (areaH / ca.height)
+     *   这样 pt.y=ca.top → cssY=0, pt.y=ca.bottom → cssY=areaH ✓
      */
     var ca = gChart.chartArea;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
-    var canvasEl = gChart.canvas;
-
-    /* Y方向缩放：chartArea内部像素 → CSS像素 */
-    var yScaleRatio = areaH / ca.height;
 
     /* 收集所有可见 series 的数据点信息 */
     var items = [];
@@ -2034,9 +2029,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
       /* X: 直接用 cssX（触摸事件坐标，与竖线一致） */
-      /* Y: 用数据点原始坐标 × Y缩放比 */
+      /* Y: 减去 ca.top 后再按比例缩放 */
       var x = cssX;
-      var y = pt.y * yScaleRatio;
+      var y = (pt.y - ca.top) * (areaH / ca.height);
 
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y, ptY_raw: pt.y});
     }
@@ -2049,11 +2044,13 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 调试日志 + 手机可视浮层 */
     if (window._gDebug !== false) {
       var dbgInfo = "areaCSS:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " caInner:" + Math.round(ca.width) + "x" + Math.round(ca.height) +
-        " yRatio:" + yScaleRatio.toFixed(3) +
-        " cssX:" + cssX.toFixed(1);
+        " ca:" + Math.round(ca.left) + "," + Math.round(ca.top) + "-" +
+        Math.round(ca.right) + "," + Math.round(ca.bottom) +
+        " cssX:" + Math.round(cssX);
       for (var di = 0; di < items.length; di++) {
-        dbgInfo += " | [" + di + "]" + items[di].key + "=(" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ") ptY=" + items[di].ptY_raw;
+        dbgInfo += " | [" + di + "]" + items[di].key.slice(0,6) +
+          "=(" + Math.round(items[di].x) + "," + Math.round(items[di].y) + ")" +
+          " rawY=" + Math.round(items[di].ptY_raw);
       }
       console.log("[price-tag] " + dbgInfo);
 
@@ -2062,7 +2059,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       if (!dbgEl) {
         dbgEl = document.createElement("div");
         dbgEl.id = "_dbgFloat";
-        dbgEl.style.cssText = "position:fixed;top:2px;right:2px;z-index:9999;background:rgba(255,0,0,0.85);color:#fff;font-size:10px;padding:4px;max-width:280px;word-break:break-all;font-family:monospace;";
+        dbgEl.style.cssText = "position:fixed;top:2px;right:2px;z-index:9999;background:rgba(255,0,0,0.85);color:#fff;font-size:10px;padding:4px;max-width:300px;word-break:break-all;font-family:monospace;";
         document.body.appendChild(dbgEl);
       }
       dbgEl.textContent = dbgInfo;
