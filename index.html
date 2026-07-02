@@ -1859,7 +1859,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 16:30";
+var GEN_TIME = "2026-07-02 16:44";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2146,20 +2146,60 @@ function toggleHighlight(key) {
 /* ===== 竖线 + 价格标签（全部从数据点坐标派生，不依赖手指位置） ===== */
 
 /**
+ * 调试浮层 —— 在页面右上角显示关键坐标值，PC/手机均可看到
+ */
+function showDebugInfo(idx, result) {
+  try {
+    var el = document.getElementById("_dbgFloat");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "_dbgFloat";
+      el.style.cssText = "position:fixed;top:4px;right:4px;z-index:9999;background:rgba(255,0,0,0.92);color:#fff;padding:4px 6px;font-size:10px;font-family:monospace;max-width:320px;word-break:break-all;line-height:1.5;border-radius:4px;pointer-events:none";
+      document.body.appendChild(el);
+    }
+    var d = result._debug;
+    var info = [];
+    info.push("=== v16 DEBUG ===");
+    info.push("idx=" + idx);
+    info.push("cv.int=" + d.cvInt + "  cv.css=" + d.cvCSS);
+    info.push("area=" + d.areaCSS + "  dpr=" + d.dpr);
+    info.push("off=" + d.offset);
+    if (result.points.length > 0) {
+      for (var i = 0; i < result.points.length; i++) {
+        var p = result.points[i];
+        info.push("--- " + p.key + " ---");
+        info.push("raw(" + p._raw.x + "," + p._raw.y + ")");
+        info.push("A:" + p._A.x + "%," + p._A.y + "%  (canvas%)");
+        info.push("B:" + p._B.x + "%," + p._B.y + "%  (chartArea%)");
+        info.push("C:" + p.pctX.toFixed(1) + "%," + p.pctY.toFixed(1) + "%  (dpr→css→area)");
+      }
+    }
+    info.push("lineX=" + (result.pctX ? result.pctX.toFixed(1) : "?") + "%");
+    el.innerHTML = info.join("<br>");
+  } catch(e) { /* silent */ }
+}
+
+/**
  * 从 Chart.js 数据点获取百分比坐标（相对于 #chartArea 容器）
  *
- * 关键：dp.x/dp.y 是 canvas 内部像素坐标，必须除以 canvas 整体尺寸（而非 chartArea 子区域）
- * 因为 CSS 百分比是相对 #chartArea 的，而 canvas width:100% 填满 #chartArea
- * 所以 pct = dp / canvasSize × 100 才是正确的容器百分比
+ * v16 调试版：同时输出所有原始坐标值到调试浮层
  */
 function getDataPointPos(idx) {
   try {
     if (!gChart || !gChart.chartArea || !gChartArea || !gChart.canvas || !gParsedData) return null;
 
-    var cvW = gChart.canvas.width;   /* canvas 内部像素宽度 */
-    var cvH = gChart.canvas.height;  /* canvas 内部像素高度 */
+    var cvW = gChart.canvas.width;
+    var cvH = gChart.canvas.height;
+
+    /* 调试：记录 canvas / chartArea 尺寸 */
+    var _cvRect = gChart.canvas.getBoundingClientRect();
+    var _areaRect = gChartArea.getBoundingClientRect();
+    var _dprX = cvW / _cvRect.width;
+    var _dprY = cvH / _cvRect.height;
+
     if (!cvW || !cvH) return null;
 
+    var ca = gChart.chartArea;
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
@@ -2180,25 +2220,57 @@ function getDataPointPos(idx) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 相对于整个 canvas 的百分比（= 相对于 #chartArea 的百分比） */
-      var px = (pt.x / cvW) * 100;
-      var py = (pt.y / cvH) * 100;
+      /*
+       * 方法 A：canvas-relative（v15 方案）—— dp.x / canvasWidth * 100
+       * 方法 B：chartArea-relative —— (dp.x - ca.left) / ca.width * 100
+       * 方法 C：CSS 像素转换 —— dp.x/dpr → 转为 #chartArea 百分比
+       *
+       * 调试版：同时计算三种结果，看哪个对
+       */
+      var pxA = (pt.x / cvW) * 100;
+      var pyA = (pt.y / cvH) * 100;
 
-      /* 用首个可见数据点的 X 作为竖线位置 */
-      if (linePctX === null) { linePctX = px; }
+      var pxB = ((pt.x - ca.left) / ca.width) * 100;
+      var pyB = ((pt.y - ca.top) / ca.height) * 100;
+
+      /* 方法 C：内部坐标 → CSS像素 → chartArea百分比 */
+      var cssPtX = pt.x / _dprX;
+      var cssPtY = pt.y / _dprY;
+      var offsetLeft = _cvRect.left - _areaRect.left;
+      var offsetTop = _cvRect.top - _areaRect.top;
+      var pxC = ((cssPtX + offsetLeft) / _areaRect.width) * 100;
+      var pyC = ((cssPtY + offsetTop) / _areaRect.height) * 100;
+
+      /* 用方法 C 作为默认（最完整的转换链） */
+      if (linePctX === null) { linePctX = pxC; }
 
       points.push({
         key: s.key, color: s.color, value: v,
         decimals: s.decimals, unit: s.unit,
-        pctX: px, pctY: py
+        pctX: pxC, pctY: pyC,
+        /* 调试数据 */
+        _raw: {x: Math.round(pt.x), y: Math.round(pt.y)},
+        _A: {x: pxA.toFixed(1), y: pyA.toFixed(1)},
+        _B: {x: pxB.toFixed(1), y: pyB.toFixed(1)},
+        _C: {xCSS: Math.round(cssPtX), yCSS: Math.round(cssPtY)}
       });
     }
 
-    if (linePctX === null || points.length === 0) return null;
-    return {
-      pctX: Math.max(0, Math.min(linePctX, 100)),
-      points: points
+    var result = { pctX: linePctX, points: points };
+
+    /* 显示调试信息 */
+    result._debug = {
+      cvInt: cvW + "x" + cvH,
+      cvCSS: Math.round(_cvRect.width) + "x" + Math.round(_cvRect.height),
+      areaCSS: Math.round(_areaRect.width) + "x" + Math.round(_areaRect.height),
+      dpr: _dprX.toFixed(2) + "/" + _dprY.toFixed(2),
+      offset: Math.round(offsetLeft) + "," + Math.round(offsetTop)
     };
+    showDebugInfo(idx, result);
+
+    if (linePctX === null || points.length === 0) return null;
+    result.pctX = Math.max(0, Math.min(result.pctX, 100));
+    return result;
   } catch (err) {
     logError("getDataPointPos", err);
     return null;
