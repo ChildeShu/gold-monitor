@@ -720,7 +720,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 09:39";
+var GEN_TIME = "2026-07-02 09:41";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1050,7 +1050,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     var areaRight = canvasToCssX(ca.right, dprX);
     var TAG_H = 22; /* 标签高度估算 */
     var halfH = TAG_H / 2;
-    var MIN_GAP = 6; /* 标签间距 */
+    var MIN_GAP = 10; /* 标签间距 */
     var PADDING = 4; /* 图表内边距 */
 
     /* 先收集所有可见 series 的信息，按 Y 位置排序 */
@@ -1124,15 +1124,15 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
       var center;
       if (placeBelow) {
-        center = cssY + halfH + PADDING + 4; /* 数据点下方 */
+        center = cssY + halfH + PADDING + 12; /* 数据点下方，加大偏移 */
       } else {
-        center = cssY - halfH - PADDING - 4; /* 数据点上方 */
+        center = cssY - halfH - PADDING - 12; /* 数据点上方，加大偏移 */
       }
 
       /* 检查是否与已放置标签重叠，如果重叠则继续向当前方向偏移 */
       var overlaps = true;
       var attempts = 0;
-      while (overlaps && attempts < 15) {
+      while (overlaps && attempts < 20) {
         overlaps = false;
         for (var j = 0; j < placed.length; j++) {
           if (center + halfH + MIN_GAP > placed[j].top && center - halfH - MIN_GAP < placed[j].bottom) {
@@ -1150,7 +1150,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         attempts++;
       }
 
-      /* 确保在图表内 */
+      /* 确保在图表内——但不要强制回弹到数据点附近，保持分散效果 */
       if (center - halfH < areaTop + PADDING) center = areaTop + halfH + PADDING;
       if (center + halfH > areaBottom - PADDING) center = areaBottom - halfH - PADDING;
 
