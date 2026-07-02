@@ -1572,9 +1572,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 13:35": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4063.74,
+      "intl_unit": "美元/盎司",
+      "cny_price": 886.5149,
+      "update_time": "2026-07-02 10:34:40",
+      "prev_close": null
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.409,
+      "prev_close": 8.255,
+      "change": 0.15399999999999991,
+      "change_rate": 1.865536038764384
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.409,
+        "gold_price": 840.9,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.15399999999999991,
+        "change_rate": 1.865536038764384
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.431,
+        "gold_price": 843.1,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.15999999999999837,
+        "change_rate": 1.9344698343610005
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.805,
+        "gold_price": 880.5,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.16300000000000026,
+        "change_rate": 1.8861374681786656
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.839,
+        "gold_price": 883.9,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.16900000000000048,
+        "change_rate": 1.9492502883506397
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.409,
+        "gold_price": 840.9,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.15399999999999991,
+        "change_rate": 1.865536038764384
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 13:33";
+var GEN_TIME = "2026-07-02 13:41";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1868,14 +1963,14 @@ function showCrosshair(cssX, idx, dprX, dprY) {
      * cssX 来自 getCssXFromTouch/Mouse = e.clientX - canvas.getBoundingClientRect().left
      * 这是相对于 canvas 左边缘的 CSS 像素。
      *
-     * 竖线和标签都在 #chartArea（canvas父div）里。
-     * 需要知道 canvas 在 #chartArea 内的位置偏移。
+     * 用比例法转为 chartArea 坐标：
+     * cssX / canvasCssWidth ≈ (pt.x - ca.left) / ca.width
+     * → chartArea内的X = (cssX / rect.width) * chartArea.offsetWidth
      */
     var canvasRect = gChart.canvas.getBoundingClientRect();
-    var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasRect.left - areaRect.left;
-    /* 竖线的 X = cssX + offsetX (chartArea坐标系) */
-    var areaCssX = cssX + offsetX;
+    var areaW = gChartArea.offsetWidth;
+    /* cssX 是相对canvas的CSS像素，转为chartArea内的比例位置 */
+    var areaCssX = (cssX / canvasRect.width) * areaW;
 
     gCrossLine.style.left = areaCssX + "px";
     gCrossLine.style.display = "block";
@@ -1911,12 +2006,20 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * 坐标转换：canvas物理像素 → chartArea CSS坐标
+     * ===== 跨设备兼容的坐标转换（比例定位法）=====
+     *
+     * Chart.js 的 meta.data[idx].x / .y 是 canvas 内部坐标系
+     * chartArea = {left, top, right, bottom} 也是同一坐标系。
+     *
+     * 关键 insight：
+     *   (pt.x - ca.left) / ca.width = 数据点在 chartArea 内的 X 比例 (0~1)
+     *   (pt.y - ca.top) / ca.height = 数据点在 chartArea 内的 Y 比例 (0~1)
+     *
+     * 然后乘以 #chartArea div 的 offsetWidth/Height 就得到正确的 CSS 像素位置。
+     * 这个方法不依赖 dpr、getBoundingClientRect 偏移量等设备相关参数，
+     * 在 PC、手机、微信内置浏览器中都能正确工作。
      */
-    var canvasRect = gChart.canvas.getBoundingClientRect();
-    var areaRect = gChartArea.getBoundingClientRect();
-    var cOffsetX = canvasRect.left - areaRect.left;
-    var cOffsetY = canvasRect.top - areaRect.top;
+    var ca = gChart.chartArea;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
 
@@ -1934,8 +2037,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      var x = pt.x / dprX + cOffsetX;
-      var y = pt.y / dprY + cOffsetY;
+      /* 比例定位：canvas内部坐标 → chartArea div CSS坐标 */
+      var x = ((pt.x - ca.left) / ca.width) * areaW;
+      var y = ((pt.y - ca.top) / ca.height) * areaH;
 
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
     }
@@ -1948,8 +2052,8 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 调试日志 */
     if (window._gDebug !== false) {
       console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " offset:" + Math.round(cOffsetX) + "," + Math.round(cOffsetY) +
-        " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2));
+        " chartArea:" + Math.round(ca.left) + "," + Math.round(ca.top) + "-" +
+        Math.round(ca.right) + "," + Math.round(ca.bottom));
       for (var di = 0; di < items.length; di++) {
         console.log("  [" + di + "] " + items[di].key + " => (" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")");
       }
@@ -2070,26 +2174,27 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine || !gChart) return;
-    var canvasEl = gChart.canvas;
-    var canvasRect = canvasEl.getBoundingClientRect();
-    var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasRect.left - areaRect.left;
+    var canvasRect = gChart.canvas.getBoundingClientRect();
+    var areaW = gChartArea.offsetWidth;
+    /* 比例定位：canvas CSS坐标 → chartArea CSS坐标 */
+    var areaCssX = (cssX / canvasRect.width) * areaW;
 
-    /* 竖线：cssX 是相对于 canvas 的，需要加偏移 */
-    gCrossLine.style.left = (cssX + offsetX) + "px";
+    /* 竖线跟随 */
+    gCrossLine.style.left = areaCssX + "px";
 
-    /* 圆点跟随 */
+    /* 圆点 X 跟随（Y不变） */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ el.style.left = (cssX + offsetX) + "px"; });
+    [].forEach.call(dots, function(el){
+      el.style.left = areaCssX + "px";
+    });
 
-    /* 标签 X 也跟随移动，保持左右侧策略 */
+    /* 标签 X 跟随移动，Y保持不变 */
     var tags = gChartArea.querySelectorAll(".price-tag");
-    var areaW = areaRect.width;
     [].forEach.call(tags, function(el){
       var tw = el.offsetWidth || 80;
-      var newLeft = cssX + offsetX + 10;
-      if (newLeft + tw + 4 > areaW && cssX + offsetX - tw - 10 >= 0) {
-        newLeft = cssX + offsetX - tw - 10;
+      var newLeft = areaCssX + 10;
+      if (newLeft + tw + 4 > areaW && areaCssX - tw - 10 >= 0) {
+        newLeft = areaCssX - tw - 10;
       }
       el.style.left = newLeft + "px";
     });
