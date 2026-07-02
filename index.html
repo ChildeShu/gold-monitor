@@ -1764,7 +1764,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 14:58";
+var GEN_TIME = "2026-07-02 15:12";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2054,19 +2054,15 @@ function showCrosshair(cssX, idx, dprX, dprY) {
   try {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
 
-    /*
-     * cssX 来自 getCssXFromTouch/Mouse = e.clientX - canvas.getBoundingClientRect().left
-     * 这是相对于 canvas 左边缘的 CSS 像素。
-     *
-     * 竖线和标签都在 #chartArea（canvas父div）里。
-     * 需要知道 canvas 在 #chartArea 内的位置偏移。
-     */
+    var ca = gChart.chartArea;
     var canvasRect = gChart.canvas.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
     var offsetX = canvasRect.left - areaRect.left;
-    var areaW = gChartArea.offsetWidth;
-    /* 竖线的 X = cssX + offsetX (chartArea坐标系)，钳制到图表区域内 */
-    var areaCssX = Math.max(0, Math.min(cssX + offsetX, areaW));
+
+    /* 用 Chart.js chartArea 实际绘图边界钳制 */
+    var chartLeftCSS = (ca.left / dprX) + offsetX;
+    var chartRightCSS = (ca.right / dprX) + offsetX;
+    var areaCssX = Math.max(chartLeftCSS, Math.min(cssX + offsetX, chartRightCSS));
 
     gCrossLine.style.left = areaCssX + "px";
     gCrossLine.style.display = "block";
@@ -2233,16 +2229,17 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      var dotX = Math.max(0, Math.min(it.x - DOT_R, areaW));
+      var chartRightCSS = (ca.right / dprX) + cOffsetX;
+      var dotX = Math.max(0, Math.min(it.x - DOT_R, chartRightCSS));
       dot.style.left = dotX + "px";
       dot.style.top = (it.y - DOT_R) + "px";
       dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
-      /* 标签边界保护 */
+      /* 标签边界保护（用图表实际绘图区域边界） */
       var fTop = pl.top;
       var fLeft = pl.left;
       if (fLeft < MARGIN) fLeft = MARGIN;
-      if (fLeft + pl.w > areaW - MARGIN) fLeft = areaW - MARGIN - pl.w;
+      if (fLeft + pl.w > chartRightCSS - MARGIN) fLeft = chartRightCSS - MARGIN - pl.w;
       if (fTop < MARGIN) fTop = it.y + DOT_R + 2;
       if (fTop + pl.h > areaH - MARGIN) fTop = areaH - MARGIN - pl.h;
 
@@ -2262,26 +2259,29 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine || !gChart) return;
+    var ca = gChart.chartArea;
     var canvasEl = gChart.canvas;
     var canvasRect = canvasEl.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
     var offsetX = canvasRect.left - areaRect.left;
-    var areaW = gChartArea.offsetWidth;
+    var dprX = gChart.canvas.width / canvasRect.width;
 
-    /* 竖线：cssX 是相对于 canvas 的，需要加偏移，并钳制到区域内 */
-    var areaCssX = Math.max(0, Math.min(cssX + offsetX, areaW));
+    /* 用 Chart.js chartArea 边界钳制 */
+    var chartLeftCSS = (ca.left / dprX) + offsetX;
+    var chartRightCSS = (ca.right / dprX) + offsetX;
+    var areaCssX = Math.max(chartLeftCSS, Math.min(cssX + offsetX, chartRightCSS));
     gCrossLine.style.left = areaCssX + "px";
 
     /* 圆点跟随（仅水平移动，保持原有 Y） */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(dots, function(el){ el.style.left = areaCssX + "px"; });
 
-    /* 标签 X 也跟随移动，保持左右侧策略 */
+    /* 标签 X 也跟随移动 */
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){
       var tw = el.offsetWidth || 80;
       var newLeft = areaCssX + 10;
-      if (newLeft + tw + 4 > areaW && areaCssX - tw - 10 >= 0) {
+      if (newLeft + tw + 4 > chartRightCSS && areaCssX - tw - 10 >= chartLeftCSS) {
         newLeft = areaCssX - tw - 10;
       }
       el.style.left = newLeft + "px";
@@ -2477,20 +2477,26 @@ function onMove(cssX) {
     var dprX = gChart.canvas.width / rect.width;
     var dprY = gChart.canvas.height / rect.height;
 
+    /* 先钳制到 canvas CSS 范围 */
     var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
     var canvasX = cssToCanvasX(clampedCssX, dprX);
 
+    /* 再钳制到 Chart.js 实际绘图区域 */
     var ca = gChart.chartArea;
     var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
     var idx = getIndexAtCanvasX(clampedCanvasX);
     if (idx < 0) return;
 
+    /* 关键修复：用数据点的实际 canvas 坐标反算回 CSS 坐标来定位竖线
+       而非直接使用触摸位置，确保竖线永远在图表绘图区域内 */
+    var snappedCssX = canvasToCssX(clampedCanvasX, dprX);
+
     if (idx !== gLastCrossIdx) {
       gLastCrossIdx = idx;
-      showCrosshair(clampedCssX, idx, dprX, dprY);
+      showCrosshair(snappedCssX, idx, dprX, dprY);
       if (gTapHint) gTapHint.style.opacity = "0";
     } else {
-      moveCrosshairOnly(clampedCssX);
+      moveCrosshairOnly(snappedCssX);
     }
   } catch (err) {
     logError("onMove", err);
