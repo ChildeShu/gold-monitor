@@ -1669,7 +1669,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 13:42";
+var GEN_TIME = "2026-07-02 13:52";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1962,17 +1962,10 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     /*
      * cssX 来自 getCssXFromTouch/Mouse = e.clientX - canvas.getBoundingClientRect().left
      * 这是相对于 canvas 左边缘的 CSS 像素。
-     *
-     * 用比例法转为 chartArea 坐标：
-     * cssX / canvasCssWidth ≈ (pt.x - ca.left) / ca.width
-     * → chartArea内的X = (cssX / rect.width) * chartArea.offsetWidth
+     * 因为 canvas 填满了 #chartArea (width:100%;height:100%)，所以 cssX 直接就是
+     * chartArea 内的 X 坐标，无需额外偏移。
      */
-    var canvasRect = gChart.canvas.getBoundingClientRect();
-    var areaW = gChartArea.offsetWidth;
-    /* cssX 是相对canvas的CSS像素，转为chartArea内的比例位置 */
-    var areaCssX = (cssX / canvasRect.width) * areaW;
-
-    gCrossLine.style.left = areaCssX + "px";
+    gCrossLine.style.left = cssX + "px";
     gCrossLine.style.display = "block";
 
     /* 底部时间 */
@@ -1981,8 +1974,8 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
     gClTime.style.display = "block";
 
-    /* 更新竖线旁价格标签 —— 传入 chartArea 坐标系的 X */
-    updatePriceTags(areaCssX, idx, dprX, dprY);
+    /* 更新竖线旁价格标签 */
+    updatePriceTags(cssX, idx, dprX, dprY);
   } catch (err) {
     logError("showCrosshair", err);
   }
@@ -2006,20 +1999,22 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 跨设备兼容的坐标转换（比例定位法）=====
+     * ===== 坐标转换：Chart.js 内部坐标 → #chartArea div CSS坐标 =====
      *
-     * Chart.js 的 meta.data[idx].x / .y 是 canvas 内部坐标系
-     * chartArea = {left, top, right, bottom} 也是同一坐标系。
+     * 核心原理：
+     *   Chart.js 的 meta.data[idx].x/y 基于 canvas 的内部像素尺寸 (canvas.width × height)
+     *   而 DOM 元素定位需要的是 CSS 像素尺寸 (canvas.clientWidth × clientHeight)
+     *   两者的比值就是精确的缩放因子，适用于任何设备（PC/手机/高DPI）
      *
-     * 关键 insight：
-     *   (pt.x - ca.left) / ca.width = 数据点在 chartArea 内的 X 比例 (0~1)
-     *   (pt.y - ca.top) / ca.height = 数据点在 chartArea 内的 Y 比例 (0~1)
+     *   cssX = pt.x × (canvas.clientWidth / canvas.width)
+     *   cssY = pt.y × (canvas.clientHeight / canvas.height)
      *
-     * 然后乘以 #chartArea div 的 offsetWidth/Height 就得到正确的 CSS 像素位置。
-     * 这个方法不依赖 dpr、getBoundingClientRect 偏移量等设备相关参数，
-     * 在 PC、手机、微信内置浏览器中都能正确工作。
+     * 因为 canvas 用 width:100%;height:100% 填满了 .chart-area，
+     * 且 .chart-area 无 padding/border，所以 canvas 的 (0,0) 就是 chartArea 的 (0,0)
      */
-    var ca = gChart.chartArea;
+    var canvasEl = gChart.canvas;
+    var scaleX = canvasEl.clientWidth / canvasEl.width;
+    var scaleY = canvasEl.clientHeight / canvasEl.height;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
 
@@ -2037,9 +2032,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 比例定位：canvas内部坐标 → chartArea div CSS坐标 */
-      var x = ((pt.x - ca.left) / ca.width) * areaW;
-      var y = ((pt.y - ca.top) / ca.height) * areaH;
+      /* 直接用缩放因子转换：canvas内部像素 → CSS像素 */
+      var x = pt.x * scaleX;
+      var y = pt.y * scaleY;
 
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
     }
@@ -2052,8 +2047,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 调试日志 */
     if (window._gDebug !== false) {
       console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " chartArea:" + Math.round(ca.left) + "," + Math.round(ca.top) + "-" +
-        Math.round(ca.right) + "," + Math.round(ca.bottom));
+        " canvas:" + Math.round(canvasEl.width) + "x" + Math.round(canvasEl.height) +
+        " css:" + Math.round(canvasEl.clientWidth) + "x" + Math.round(canvasEl.clientHeight) +
+        " scale:" + scaleX.toFixed(3) + "," + scaleY.toFixed(3));
       for (var di = 0; di < items.length; di++) {
         console.log("  [" + di + "] " + items[di].key + " => (" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")");
       }
@@ -2174,27 +2170,24 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine || !gChart) return;
-    var canvasRect = gChart.canvas.getBoundingClientRect();
     var areaW = gChartArea.offsetWidth;
-    /* 比例定位：canvas CSS坐标 → chartArea CSS坐标 */
-    var areaCssX = (cssX / canvasRect.width) * areaW;
 
-    /* 竖线跟随 */
-    gCrossLine.style.left = areaCssX + "px";
+    /* cssX 已经是相对于 canvas（=chartArea）的CSS坐标 */
+    gCrossLine.style.left = cssX + "px";
 
     /* 圆点 X 跟随（Y不变） */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(dots, function(el){
-      el.style.left = areaCssX + "px";
+      el.style.left = cssX + "px";
     });
 
     /* 标签 X 跟随移动，Y保持不变 */
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){
       var tw = el.offsetWidth || 80;
-      var newLeft = areaCssX + 10;
-      if (newLeft + tw + 4 > areaW && areaCssX - tw - 10 >= 0) {
-        newLeft = areaCssX - tw - 10;
+      var newLeft = cssX + 10;
+      if (newLeft + tw + 4 > areaW && cssX - tw - 10 >= 0) {
+        newLeft = cssX - tw - 10;
       }
       el.style.left = newLeft + "px";
     });
