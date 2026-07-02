@@ -1192,9 +1192,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 11:42": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4058.05,
+      "intl_unit": "美元/盎司",
+      "cny_price": 886.3826,
+      "update_time": "2026-07-02 10:34:40",
+      "prev_close": null
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.432,
+      "prev_close": 8.255,
+      "change": 0.1769999999999996,
+      "change_rate": 2.144155057540879
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.432,
+        "gold_price": 843.2,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1769999999999996,
+        "change_rate": 2.144155057540879
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.45,
+        "gold_price": 845.0,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.1789999999999985,
+        "change_rate": 2.164188127191373
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.83,
+        "gold_price": 883.0,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.1880000000000006,
+        "change_rate": 2.175422355936133
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.858,
+        "gold_price": 885.8,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.1880000000000006,
+        "change_rate": 2.168396770472902
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.432,
+        "gold_price": 843.2,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1769999999999996,
+        "change_rate": 2.144155057540879
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 11:38";
+var GEN_TIME = "2026-07-02 11:45";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1531,14 +1626,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标系统（最终正确版）=====
-     *
-     * cssX 参数已经是 chartArea 坐标系（showCrosshair 中加了 offsetX）。
-     *
-     * Chart.js 数据点 pt.x / pt.y 是 canvas 物理像素。
-     * 需要转成 chartArea 坐标系：
-     *   1. pt.x / dprX = 相对于 canvas 左边缘的 CSS 像素
-     *   2. + canvas 在 chartArea 中的偏移 = chartArea 内的绝对坐标
+     * 坐标转换：canvas物理像素 → chartArea CSS坐标
      */
     var canvasRect = gChart.canvas.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
@@ -1558,39 +1646,35 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
 
-      /* 获取 Chart.js 数据点位置 */
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 转为 chartArea 坐标系的绝对坐标 */
       var x = pt.x / dprX + cOffsetX;
       var y = pt.y / dprY + cOffsetY;
 
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y, ptX: pt.x, ptY: pt.y});
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
     }
 
     if (items.length === 0) return;
 
-    /* 按 Y 从小到大排序（上方在前） */
+    /* 按 Y 从小到大排序 */
     items.sort(function(a, b){ return a.y - b.y; });
 
-    /* 调试：在控制台输出坐标信息 */
+    /* 调试日志 */
     if (window._gDebug !== false) {
       console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " canvasOffset:" + Math.round(cOffsetX) + "," + Math.round(cOffsetY) +
-        " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2) +
-        " lineX:" + cssX.toFixed(1));
+        " offset:" + Math.round(cOffsetX) + "," + Math.round(cOffsetY) +
+        " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2));
       for (var di = 0; di < items.length; di++) {
-        console.log("  [" + di + "] " + items[di].key +
-          " => chartArea(" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")" +
-          " | canvasPt: pt=" + (items[di].ptX || "?") + "," + (items[di].ptY || "?"));
+        console.log("  [" + di + "] " + items[di].key + " => (" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")");
       }
     }
 
-    var DOT_R = 4; /* 圆点半径 */
-    var GAP = 1;   /* 标签与圆点间距（最小化） */
+    var DOT_R = 4;
+    var TAG_PAD_X = 6;  /* 标签内水平padding */
+    var TAG_PAD_Y = 3;  /* 标签内垂直padding */
 
-    /* 先创建所有标签获取尺寸，再做布局 */
+    /* 先创建所有标签获取真实尺寸 */
     var rawTags = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
@@ -1605,10 +1689,40 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       }
       tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
       tag.style.display = "flex";
-      tag.style.visibility = "hidden"; /* 暂时隐藏以测量尺寸 */
+      tag.style.visibility = "hidden";
       tag.style.left = "0px"; tag.style.top = "0px";
       tag.style.transform = "none";
-      rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 18});
+      rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
+    }
+
+    /*
+     * ===== 布局策略 =====
+     * 目标：标签紧贴数据点圆点，两个标签不重叠，靠边自动换侧
+     *
+     * 对于2个标签的情况：
+     *   - 上方的标签 → 放在圆点的 左上方（标签右下角对齐圆点左上角）
+     *   - 下方的标签 → 放在圆点的 右下方（标签左上角对齐圆点右下角）
+     * 这样形成对角线布局，天然不会重叠
+     *
+     * 右侧空间不足时，整体镜像到左边
+     */
+    var MARGIN = 6;
+    var preferRight = true;
+
+    /* 检查右侧是否有足够空间放最大的标签 */
+    var maxTw = 0;
+    for (var i = 0; i < rawTags.length; i++) { if (rawTags[i].w > maxTw) maxTw = rawTags[i].w; }
+    var rightSpace = areaW - (items[0].x + DOT_R);
+    if (rightSpace < maxTw + MARGIN) {
+      preferRight = false;
+    }
+    /* 检查左侧是否有足够空间 */
+    if (!preferRight) {
+      var leftSpace = items[0].x - DOT_R;
+      if (leftSpace < maxTw + MARGIN) {
+        /* 两边都不够宽，用居中策略 */
+        preferRight = true; /* 回到右边，尽量显示 */
+      }
     }
 
     for (var i = 0; i < items.length; i++) {
@@ -1617,7 +1731,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var tw = rt.w;
       var th = rt.h;
 
-      /* === 圆点 === */
+      /* 圆点：始终在数据点位置 */
       var dot = existingDots[it.key];
       if (dot) {
         delete existingDots[it.key];
@@ -1636,40 +1750,79 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* === 标签：紧贴K线数据点 === */
+      /* 标签位置 */
       rt.tag.style.visibility = "visible";
 
-      /* 垂直：紧贴数据点，上下交错 */
-      var tagTop;
-      if (i % 2 === 0) {
-        /* 偶数：标签底部贴在数据点顶部（圆点上方） */
-        tagTop = it.y - DOT_R - GAP - th;
+      var tagLeft, tagTop;
+
+      if (items.length === 1) {
+        /* 单个标签：默认右下方 */
+        tagLeft = it.x + DOT_R + 3;
+        tagTop = it.y + DOT_R + 3;
+        if (tagLeft + tw > areaW - MARGIN) {
+          tagLeft = it.x - DOT_R - tw - 3;
+        }
+        if (tagLeft < MARGIN) tagLeft = MARGIN;
+        if (tagTop + th > areaH - MARGIN) {
+          tagTop = it.y - DOT_R - th - 3;
+        }
+        if (tagTop < MARGIN) tagTop = it.y + DOT_R + 3;
       } else {
-        /* 奇数：标签顶部贴在数据点底部（圆点下方） */
-        tagTop = it.y + DOT_R + GAP;
+        /* 多个标签：对角线布局 */
+        var isUpper = (i === 0); /* 已按y排序，第一个是上面的点 */
+        if (preferRight) {
+          if (isUpper) {
+            /* 上面的标签：放在圆点右上 → 标签左边缘贴圆点右侧 */
+            tagLeft = it.x + DOT_R + 2;
+            tagTop = it.y - DOT_R - th - 2;
+          } else {
+            /* 下面的标签：放在圆点右下 → 标签左上角贴圆点下方 */
+            tagLeft = it.x + DOT_R + 2;
+            tagTop = it.y + DOT_R + 2;
+          }
+          /* 右侧放不下则切到左侧 */
+          if (tagLeft + tw > areaW - MARGIN) {
+            if (isUpper) {
+              tagLeft = it.x - DOT_R - tw - 2;
+              tagTop = it.y - DOT_R - th - 2;
+            } else {
+              tagLeft = it.x - DOT_R - tw - 2;
+              tagTop = it.y + DOT_R + 2;
+            }
+          }
+        } else {
+          /* 偏好左侧 */
+          if (isUpper) {
+            tagLeft = it.x - DOT_R - tw - 2;
+            tagTop = it.y - DOT_R - th - 2;
+          } else {
+            tagLeft = it.x - DOT_R - tw - 2;
+            tagTop = it.y + DOT_R + 2;
+          }
+          /* 左侧放不下则切回右侧 */
+          if (tagLeft < MARGIN) {
+            if (isUpper) {
+              tagLeft = it.x + DOT_R + 2;
+              tagTop = it.y - DOT_R - th - 2;
+            } else {
+              tagLeft = it.x + DOT_R + 2;
+              tagTop = it.y + DOT_R + 2;
+            }
+          }
+        }
       }
 
-      /* 水平：紧挨圆点右边缘 */
-      var tagLeft = it.x + DOT_R + 2;
-
-      /* 右侧放不下 → 紧挨圆点左边缘显示在左边 */
-      if (tagLeft + tw > areaW - 4) {
-        tagLeft = it.x - DOT_R - 3 - tw;
-      }
-      /* 左侧也放不下 → 居中 */
-      if (tagLeft < 4) {
-        tagLeft = it.x - tw / 2;
-      }
-
-      /* 边界保护：垂直方向 */
-      if (tagTop < 4) tagTop = it.y + DOT_R + GAP;
-      if (tagTop + th > areaH - 4) tagTop = it.y - DOT_R - GAP - th;
+      /* 最终边界钳制 */
+      if (tagLeft < MARGIN) tagLeft = MARGIN;
+      if (tagLeft + tw > areaW - MARGIN) tagLeft = areaW - MARGIN - tw;
+      if (tagTop < MARGIN) tagTop = MARGIN;
+      if (tagTop + th > areaH - MARGIN) tagTop = areaH - MARGIN - th;
 
       rt.tag.style.left = Math.round(tagLeft) + "px";
       rt.tag.style.top = Math.round(tagTop) + "px";
     }
 
-    /* 移除多余的旧标签和旧圆点 */
+    /* 移除多余旧元素 */
     Object.keys(existing).forEach(function(k){ try{existing[k].remove();}catch(_){} });
     Object.keys(existingDots).forEach(function(k){ try{existingDots[k].remove();}catch(_){} });
   } catch (err) {
