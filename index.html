@@ -813,9 +813,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 09:54": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4053.53,
+      "intl_unit": "美元/盎司",
+      "cny_price": 884.6483,
+      "update_time": "2026-07-01 20:00:00",
+      "prev_close": 4031.29
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.403,
+      "prev_close": 8.255,
+      "change": 0.1479999999999997,
+      "change_rate": 1.7928528164748598
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.403,
+        "gold_price": 840.3,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1479999999999997,
+        "change_rate": 1.7928528164748598
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.422,
+        "gold_price": 842.2,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.1509999999999998,
+        "change_rate": 1.8256559061782105
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.797,
+        "gold_price": 879.7,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.15500000000000114,
+        "change_rate": 1.7935663040962873
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.83,
+        "gold_price": 883.0,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.16000000000000014,
+        "change_rate": 1.8454440599769337
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.403,
+        "gold_price": 840.3,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1479999999999997,
+        "change_rate": 1.7928528164748598
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 09:52";
+var GEN_TIME = "2026-07-02 10:19";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1183,13 +1278,21 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.cssY - b.cssY; });
 
-    /* 布局策略（彻底重写）：
-       - 多个标签时，水平方向交替错开：第0个放数据点右侧，第1个放左侧，以此类推
-       - 垂直方向紧贴数据点（center = cssY），不上下偏移
-       - 这样即使两个数据点Y坐标完全一样，标签也不会重叠 */
-    var placed = []; /* {top, bottom, cssY, side} */
+    /* 布局策略（按用户要求重写）：
+       - 所有标签以 K 线交点的中心点为基准，向上平铺排列
+       - 标签水平位置在竖线右侧（紧挨着数据点）
+       - 如果靠边显示不下（右侧空间不够），改用 tooltip 气泡样式
+    */
+    var placed = [];
     var labels = [];
-    var multiLine = items.length > 1;
+    /* 计算所有数据点的中心 Y */
+    var centerY = 0;
+    for (var ci = 0; ci < items.length; ci++) centerY += items[ci].cssY;
+    centerY = centerY / items.length;
+
+    /* 从中心点开始，标签向上平铺：第1个在中心点上方，第2个在第1个上方... */
+    var TAG_H = 22;
+    var TAG_GAP = 4;
 
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
@@ -1206,7 +1309,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      dot.style.left = cssX + "px";
+      dot.style.left = areaCssX + "px";
       dot.style.top = cssY + "px";
       if (gHighlightedSeries && gHighlightedSeries !== it.key) {
         dot.style.display = "none";
@@ -1214,18 +1317,10 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* 垂直位置：紧贴数据点 */
-      var center = cssY;
+      /* 标签垂直位置：从中心点向上平铺 */
+      var tagTop = centerY - (i + 1) * (TAG_H + TAG_GAP);
 
-      /* 确定水平侧：交替左右 */
-      var onRight;
-      if (multiLine) {
-        onRight = (i % 2 === 0); /* 第0个放右侧，第1个放左侧 */
-      } else {
-        onRight = true;
-      }
-
-      /* 计算水平位置 */
+      /* 计算水平位置——先创建标签获取实际宽度 */
       var tag = existing[it.key];
       if (tag) {
         delete existing[it.key];
@@ -1241,50 +1336,40 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       tag.style.top = "0px";
       tag.style.transform = "none";
       var tagWidth = tag.offsetWidth || 80;
-      var tagHeight = tag.offsetHeight || 20;
+      var tagHeight = tag.offsetHeight || TAG_H;
 
-      var left;
-      if (onRight) {
-        left = areaCssX + 10;
-        if (left + tagWidth + 4 > areaRight) {
-          left = areaCssX - tagWidth - 10;
-        }
-      } else {
-        left = areaCssX - tagWidth - 10;
+      var left = areaCssX + 8;
+      var useTooltipStyle = false;
+
+      /* 检查右侧是否放得下 */
+      if (left + tagWidth + 6 > areaRight) {
+        /* 放不下，改用 tooltip 气泡样式：放在数据点左上角 */
+        left = areaCssX - tagWidth - 8;
         if (left < areaLeft) {
-          left = areaCssX + 10;
+          /* 左边也放不下，用 tooltip 居中显示在数据点上方 */
+          left = areaCssX - tagWidth / 2;
+          useTooltipStyle = true;
         }
       }
 
-      /* 垂直防重叠：检查与同侧已放置标签是否重叠 */
-      var tagTop = center - tagHeight / 2;
-      var tagBottom = center + tagHeight / 2;
-      var VERT_GAP = 4;
-
-      for (var k = 0; k < placed.length; k++) {
-        var p = placed[k];
-        /* 只检查同侧的 */
-        if (p.side !== (onRight ? 1 : 0)) continue;
-        if (tagBottom + VERT_GAP > p.top && tagTop - VERT_GAP < p.bottom) {
-          /* 重叠了，向下推开 */
-          center = p.bottom + tagHeight / 2 + VERT_GAP;
-          tagTop = center - tagHeight / 2;
-          tagBottom = center + tagHeight / 2;
-          /* 从头重新检查（因为推开后可能与其他标签重叠） */
-          k = -1;
-        }
+      /* 确保标签不超出顶部边界 */
+      if (tagTop < areaTop + 4) {
+        /* 如果超出顶部，从数据点向下平铺 */
+        tagTop = centerY + i * (TAG_H + TAG_GAP);
+        if (tagTop + tagHeight > areaBottom - 4) tagTop = areaBottom - tagHeight - 4;
       }
-
-      /* 确保不超出图表边界 */
-      if (center - tagHeight / 2 < areaTop + 2) center = areaTop + tagHeight / 2 + 2;
-      if (center + tagHeight / 2 > areaBottom - 2) center = areaBottom - tagHeight / 2 - 2;
-
-      placed.push({top: center - tagHeight / 2, bottom: center + tagHeight / 2, side: onRight ? 1 : 0});
 
       tag.style.left = left + "px";
-      tag.style.top = (center - tagHeight / 2) + "px";
+      tag.style.top = tagTop + "px";
 
-      labels.push({el: tag, cssY: cssY, center: center});
+      if (useTooltipStyle) {
+        tag.style.background = "rgba(14,14,26,0.96)";
+        tag.style.borderRadius = "6px";
+        tag.style.padding = "3px 8px";
+      }
+
+      labels.push({el: tag, cssY: cssY});
+    }
     }
 
     /* 移除多余的旧标签和旧圆点 */
