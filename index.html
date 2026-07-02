@@ -815,7 +815,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 09:47";
+var GEN_TIME = "2026-07-02 09:48";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1239,17 +1239,40 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var left;
       if (onRight) {
         left = cssX + 10;
-        /* 超出右边界则放左侧 */
         if (left + tagWidth + 4 > areaRight) {
           left = cssX - tagWidth - 10;
         }
       } else {
         left = cssX - tagWidth - 10;
-        /* 超出左边界则放右侧 */
         if (left < areaLeft) {
           left = cssX + 10;
         }
       }
+
+      /* 垂直防重叠：检查与同侧已放置标签是否重叠 */
+      var tagTop = center - tagHeight / 2;
+      var tagBottom = center + tagHeight / 2;
+      var VERT_GAP = 4;
+
+      for (var k = 0; k < placed.length; k++) {
+        var p = placed[k];
+        /* 只检查同侧的 */
+        if (p.side !== (onRight ? 1 : 0)) continue;
+        if (tagBottom + VERT_GAP > p.top && tagTop - VERT_GAP < p.bottom) {
+          /* 重叠了，向下推开 */
+          center = p.bottom + tagHeight / 2 + VERT_GAP;
+          tagTop = center - tagHeight / 2;
+          tagBottom = center + tagHeight / 2;
+          /* 从头重新检查（因为推开后可能与其他标签重叠） */
+          k = -1;
+        }
+      }
+
+      /* 确保不超出图表边界 */
+      if (center - tagHeight / 2 < areaTop + 2) center = areaTop + tagHeight / 2 + 2;
+      if (center + tagHeight / 2 > areaBottom - 2) center = areaBottom - tagHeight / 2 - 2;
+
+      placed.push({top: center - tagHeight / 2, bottom: center + tagHeight / 2, side: onRight ? 1 : 0});
 
       tag.style.left = left + "px";
       tag.style.top = (center - tagHeight / 2) + "px";
