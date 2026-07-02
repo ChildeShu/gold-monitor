@@ -141,10 +141,7 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
 <div class="chart-stage">
   <div class="chart-area" id="chartArea">
     <canvas id="chart"></canvas>
-    <div class="cross-line" id="crossLine">
-      <div class="cl-dash"></div>
-      <div class="cl-time" id="clTime"></div>
-    </div>
+    <canvas id="crossOverlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:15"></canvas>
     <div class="tap-hint" id="tapHint">← 在图表上滑动查看 →<br><span id="errorBox" style="color:#ff6b6b;display:none"></span></div>
   </div>
 </div>
@@ -2142,9 +2139,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 20:08": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4067.92,
+      "intl_unit": "美元/盎司",
+      "cny_price": 886.7074,
+      "update_time": "2026-07-02 15:05:30",
+      "prev_close": null
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.454,
+      "prev_close": 8.255,
+      "change": 0.19899999999999984,
+      "change_rate": 2.410660205935794
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.454,
+        "gold_price": 845.4,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.475,
+        "gold_price": 847.5,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.20399999999999885,
+        "change_rate": 2.466449038810287
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.851,
+        "gold_price": 885.1,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.2090000000000014,
+        "change_rate": 2.418421661652412
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.883,
+        "gold_price": 888.3,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.2129999999999992,
+        "change_rate": 2.4567474048442817
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.454,
+        "gold_price": 845.4,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 19:45";
+var GEN_TIME = "2026-07-02 20:27";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2184,8 +2276,8 @@ var gLastCrossIdx = -1;
 var gHideTimer = null;
 var gTapHint = null;
 var gChartArea = null;
-var gCrossLine = null;
-var gClTime = null;
+var gCrossLine = null;   /* v18: deprecated, kept for compat */
+var gClTime = null;      /* v18: deprecated, kept for compat */
 var gLegendBar = null;
 var gParsedData = null;
 var gIsDown = false;
@@ -2367,6 +2459,8 @@ function renderChart(groupName) {
         events: []
       }
     });
+    /* v18: 初始化 canvas 覆盖层（必须在 chart 创建后） */
+    initOverlay();
     document.getElementById("headerDate").textContent =
       gParsedData.rawLabels[0].slice(5) + " ~ " + gParsedData.rawLabels[gParsedData.rawLabels.length-1].slice(5);
     renderTabs();
@@ -2430,205 +2524,221 @@ function toggleHighlight(key) {
 
 /* ===== 竖线 + 价格标签（全部从数据点坐标派生，不依赖手指位置） ===== */
 
-/* ===== 竖线 + 价格标签（v17：纯像素定位，放弃百分比） ===== */
+/* ===== v18：Canvas 覆盖层绘制十字线 / 圆点 / 标签 —— 零坐标转换 ===== */
+
+var gOverlay = null;          /* 覆盖层 canvas */
+var gOverlayCtx = null;       /* 其 2D 上下文 */
+var gCrossIdx = -1;           /* 当前十字线对应的数据点索引 */
 
 /**
- * 从 Chart.js 数据点获取 CSS 像素坐标（相对于 #chartArea）
- *
- * 转换链：dp.x(内部) / dpr -> cssX(相对于canvas CSS) -> 加偏移 -> 相对于#chartArea的px
- * 不使用任何百分比，完全基于 getBoundingClientRect 的实测值
+ * 初始化覆盖层 canvas：尺寸与 Chart.js 内部 canvas 一致
+ * 这样 dp.x/dp.y 可以直接用于绘制，无需任何 dpr/百分比/px 换算
  */
-function getDataPointPos(idx) {
+function initOverlay() {
   try {
-    if (!gChart || !gChart.canvas || !gChartArea) return null;
+    gOverlay = document.getElementById('crossOverlay');
+    if (!gOverlay || !gChart || !gChart.canvas) return;
+    /* 设置为与 chart 内部分辨率一致 */
+    gOverlay.width = gChart.canvas.width;
+    gOverlay.height = gChart.canvas.height;
+    gOverlay.style.width = '100%';
+    gOverlay.style.height = '100%';
+    gOverlayCtx = gOverlay.getContext('2d');
+  } catch (err) {
+    logError('initOverlay', err);
+  }
+}
 
-    var cv = gChart.canvas;
-    var cvRect = cv.getBoundingClientRect();
-    var areaRect = gChartArea.getBoundingClientRect();
+/**
+ * 清空覆盖层
+ */
+function clearOverlay() {
+  if (!gOverlayCtx || !gOverlay || !gChart) return;
+  /* 每次清空前同步尺寸（处理 resize） */
+  if (gOverlay.width !== gChart.canvas.width || gOverlay.height !== gChart.canvas.height) {
+    gOverlay.width = gChart.canvas.width;
+    gOverlay.height = gChart.canvas.height;
+  }
+  gOverlayCtx.clearRect(0, 0, gOverlay.width, gOverlay.height);
+}
 
-    var dprX = cv.width / cvRect.width;
-    var dprY = cv.height / cvRect.height;
-    if (!dprX || !dprY) return null;
+/**
+ * 绘制虚线竖线 + 时间标签 + 圆点 + 价格标签（全部在 overlay canvas 上）
+ * @param {number} idx - 数据点索引
+ */
+function drawCrosshair(idx) {
+  try {
+    if (!gChart || !gOverlayCtx || !gParsedData || idx < 0) return;
 
-    /* canvas 在 chartArea 内的偏移 */
-    var offsetX = cvRect.left - areaRect.left;
-    var offsetY = cvRect.top - areaRect.top;
+    var cvW = gOverlay.width;
+    var cvH = gOverlay.height;
+    clearOverlay();
+
+    var ca = gChart.chartArea;
+    if (!ca) return;
 
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
 
-    var lineCssX = null;
-    var points = [];
-
+    /* 收集当前 idx 下所有可见 series 的数据点（canvas 内部坐标） */
+    var pts = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
       var dsIdx = dsIndexMap[s.key];
       if (dsIdx === undefined) continue;
       var meta = gChart.getDatasetMeta(dsIdx);
       if (meta && meta.hidden) continue;
-
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
-
       var pt = meta.data && meta.data[idx];
-      if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
-
-      var cssX = pt.x / dprX + offsetX;
-      var cssY = pt.y / dprY + offsetY;
-
-      if (lineCssX === null) { lineCssX = cssX; }
-
-      points.push({
-        key: s.key, color: s.color, value: v,
-        decimals: s.decimals, unit: s.unit,
-        cssX: cssX, cssY: cssY
-      });
+      if (!pt || typeof pt.x !== 'number' || typeof pt.y !== 'number') continue;
+      pts.push({ key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: pt.x, y: pt.y });
     }
 
-    if (lineCssX === null || points.length === 0) return null;
+    if (pts.length === 0) return;
 
-    return { lineCssX: lineCssX, points: points };
-  } catch (err) {
-    logError("getDataPointPos", err);
-    return null;
-  }
-}
+    /* ---- 1. 竖线（从图表区顶部到底部）---- */
+    var lineX = pts[0].x;
+    gOverlayCtx.save();
+    gOverlayCtx.strokeStyle = 'rgba(212,175,55,0.8)';
+    gOverlayCtx.lineWidth = 1;
+    gOverlayCtx.setLineDash([4, 4]);
+    gOverlayCtx.beginPath();
+    gOverlayCtx.moveTo(lineX, ca.top);
+    gOverlayCtx.lineTo(lineX, ca.bottom);
+    gOverlayCtx.stroke();
+    gOverlayCtx.restore();
 
-function positionCrosshair(idx) {
-  try {
-    var pos = getDataPointPos(idx);
-    if (!pos) return;
-
-    gCrossLine.style.left = pos.lineCssX.toFixed(1) + "px";
-    gCrossLine.style.display = "block";
-
+    /* ---- 2. 底部时间标签 ---- */
     var label = gParsedData.rawLabels[idx];
-    var p = label.split(" ");
-    gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
-    gClTime.style.display = "block";
+    var p = label.split(' ');
+    var timeStr = p[0].slice(5) + ' ' + p[1].slice(0,5);
+    gOverlayCtx.save();
+    gOverlayCtx.font = '600 12px -apple-system, BlinkMacSystemFont, PingFang SC, sans-serif';
+    var tm = gOverlayCtx.measureText(timeStr);
+    var tx = lineX - tm.width / 2;
+    var ty = ca.bottom + 16;
+    /* 背景 */
+    gOverlayCtx.fillStyle = 'rgba(212,175,55,0.95)';
+    roundRect(gOverlayCtx, tx - 5, ty - 10, tm.width + 10, 14, 3);
+    gOverlayCtx.fill();
+    /* 文字 */
+    gOverlayCtx.fillStyle = '#0e0e1a';
+    gOverlayCtx.textBaseline = 'middle';
+    gOverlayCtx.fillText(timeStr, tx, ty - 3);
+    gOverlayCtx.restore();
 
-    renderPriceTags(pos.points);
-  } catch (err) { logError("positionCrosshair", err); }
-}
+    /* ---- 3. 圆点 + 价格标签（按 Y 排序，从下往上排列避免遮挡）---- */
+    pts.sort(function(a, b) { return a.y - b.y; });
 
-function showCrosshair(cssX, idx, dprX, dprY) {
-  try {
-    if (!gCrossLine) return;
-    gLastCrossIdx = idx;
-    positionCrosshair(idx);
-    if (gTapHint) gTapHint.style.opacity = "0";
-  } catch (err) { logError("showCrosshair", err); }
-}
+    for (var i = 0; i < pts.length; i++) {
+      var pt = pts[i];
 
-function moveCrosshairOnly(cssX) {
-  try {
-    if (gLastCrossIdx < 0 || !gCrossLine) return;
-    positionCrosshair(gLastCrossIdx);
-  } catch (err) { logError("moveCrosshairOnly", err); }
+      /* 圆点：白边 + 填充色 */
+      gOverlayCtx.save();
+      gOverlayCtx.beginPath();
+      gOverlayCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+      gOverlayCtx.fillStyle = '#fff';
+      gOverlayCtx.fill();
+      gOverlayCtx.lineWidth = 2;
+      gOverlayCtx.strokeStyle = pt.color;
+      gOverlayCtx.stroke();
+      /* 内部填充 */
+      gOverlayCtx.beginPath();
+      gOverlayCtx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
+      gOverlayCtx.fillStyle = pt.color;
+      gOverlayCtx.fill();
+      gOverlayCtx.restore();
+
+      /* 价格标签 */
+      var txt = pt.value.toFixed(pt.decimals) + ' ' + pt.unit;
+      gOverlayCtx.save();
+      gOverlayCtx.font = '700 11px -apple-system, BlinkMacSystemFont, PingFang SC, sans-serif';
+      var twm = gOverlayCtx.measureText(txt);
+      var tagPadX = 6, tagPadY = 2;
+      var tagW = twm.width + tagPadX * 2;
+      var tagH = 16 + tagPadY * 2;
+      var tagX = pt.x + 7;   /* 默认在圆点右边 */
+      var tagY = pt.y - tagH / 2;
+
+      /* 右边界检查 */
+      if (tagX + tagW > cvW - 4) {
+        tagX = pt.x - tagW - 7;  /* 放左边 */
+      }
+      /* 上边界检查 */
+      if (tagY < ca.top + 2) tagY = ca.top + 2;
+      /* 下边界检查 */
+      if (tagY + tagH > ca.bottom - 18) tagY = ca.bottom - 18 - tagH;
+
+      /* 标签背景 */
+      gOverlayCtx.fillStyle = 'rgba(14,14,26,0.94)';
+      gOverlayCtx.strokeStyle = 'rgba(255,255,255,0.15)';
+      gOverlayCtx.lineWidth = 1;
+      roundRect(gOverlayCtx, tagX, tagY, tagW, tagH, 4);
+      gOverlayCtx.fill();
+      gOverlayCtx.stroke();
+
+      /* 彩色圆点 */
+      gOverlayCtx.beginPath();
+      gOverlayCtx.arc(tagX + tagPadX + 3, tagY + tagH / 2, 3, 0, Math.PI * 2);
+      gOverlayCtx.fillStyle = pt.color;
+      gOverlayCtx.fill();
+
+      /* 文字 */
+      gOverlayCtx.fillStyle = pt.color;
+      gOverlayCtx.textBaseline = 'middle';
+      gOverlayCtx.fillText(txt, tagX + tagPadX + 10, tagY + tagH / 2);
+
+      gOverlayCtx.restore();
+    }
+  } catch (err) {
+    logError('drawCrosshair', err);
+  }
 }
 
 /**
- * 渲染价格标签和圆点 —— 纯像素定位
- * points: [{key,color,value,decimals,unit,cssX,cssY}]  坐标单位=px，参照=#chartArea
+ * 绘制圆角矩形辅助函数
  */
-function renderPriceTags(points) {
+function roundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/*
+ * 对外接口：showCrosshair / moveCrosshairOnly / removeCrosshairDetails
+ * 全部委托给 drawCrosshair(idx)
+ */
+function showCrosshair(cssX, idx, dprX, dprY) {
   try {
-    if (!gChartArea || !points || points.length === 0) return;
+    gCrossIdx = idx;
+    drawCrosshair(idx);
+    if (gTapHint) gTapHint.style.opacity = '0';
+  } catch (err) { logError('showCrosshair', err); }
+}
 
-    var existing = {};
-    var oldTags = gChartArea.querySelectorAll(".price-tag");
-    [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
-    var existingDots = {};
-    var oldDots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
-
-    var items = points.slice().sort(function(a, b){ return a.cssY - b.cssY; });
-    var DOT_R = 4, MARGIN_PX = 6, TAG_GAP_PX = 3;
-
-    var rawTags = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var tag = existing[it.key];
-      if (tag) { delete existing[it.key]; }
-      else {
-        tag = document.createElement("div");
-        tag.className = "price-tag";
-        tag.dataset.key = it.key;
-        gChartArea.appendChild(tag);
-      }
-      tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
-      tag.style.display = "flex";
-      tag.style.visibility = "hidden";
-      tag.style.left = "0px"; tag.style.top = "0px";
-      rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
-    }
-
-    var placements = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i], rt = rawTags[i];
-      var left = it.cssX + DOT_R + 3;
-      var top = it.cssY + DOT_R + 3;
-      if (left + rt.w > gChartArea.offsetWidth - MARGIN_PX) {
-        left = it.cssX - DOT_R - rt.w - 3;
-      }
-      placements.push({left: left, top: top, w: rt.w, h: rt.h});
-    }
-
-    for (var i = 0; i < placements.length; i++) {
-      for (var j = i + 1; j < placements.length; j++) {
-        var a = placements[i], b = placements[j];
-        var ox = !(a.left + a.w + TAG_GAP_PX < b.left || b.left + b.w + TAG_GAP_PX < a.left);
-        var oy = !(a.top + a.h + TAG_GAP_PX < b.top || b.top + b.h + TAG_GAP_PX < a.top);
-        if (ox && oy) { b.top = a.top + a.h + TAG_GAP_PX; }
-      }
-    }
-
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i], rt = rawTags[i], pl = placements[i];
-
-      var dot = existingDots[it.key];
-      if (dot) { delete existingDots[it.key]; }
-      else {
-        dot = document.createElement("div");
-        dot.className = "highlight-dot"; dot.dataset.key = it.key;
-        gChartArea.appendChild(dot);
-      }
-      dot.style.backgroundColor = it.color;
-      dot.style.left = (it.cssX - DOT_R) + "px";
-      dot.style.top = (it.cssY - DOT_R) + "px";
-      dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
-
-      var fTop = pl.top, fLeft = pl.left;
-      var areaW = gChartArea.offsetWidth, areaH = gChartArea.offsetHeight;
-      if (fLeft < MARGIN_PX) fLeft = MARGIN_PX;
-      if (fLeft + rt.w > areaW - MARGIN_PX) fLeft = areaW - MARGIN_PX - rt.w;
-      if (fTop < MARGIN_PX) fTop = it.cssY + DOT_R + 3;
-      if (fTop + rt.h > areaH - MARGIN_PX) fTop = areaH - MARGIN_PX - rt.h;
-
-      rt.tag.style.visibility = "visible";
-      rt.tag.style.left = Math.round(fLeft) + "px";
-      rt.tag.style.top = Math.round(fTop) + "px";
-    }
-
-    Object.keys(existing).forEach(function(k){ try{existing[k].remove();}catch(_){} });
-    Object.keys(existingDots).forEach(function(k){ try{existingDots[k].remove();}catch(_){} });
-  } catch (err) { logError("renderPriceTags", err); }
+function moveCrosshairOnly(cssX) {
+  /* 忽略手指位置，用已选中的 idx 重绘 */
+  try {
+    if (gCrossIdx >= 0) drawCrosshair(gCrossIdx);
+  } catch (err) { logError('moveCrosshairOnly', err); }
 }
 
 function removeCrosshairDetails() {
-  try {
-    var tags = gChartArea.querySelectorAll(".price-tag");
-    [].forEach.call(tags, function(el){ el.remove(); });
-    var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ el.remove(); });
-  } catch (err) {
-    logError("removeCrosshairDetails", err);
-  }
+  clearOverlay();
+  gCrossIdx = -1;
 }
 
-/* ===== Tab 栏左右滑动切换 ===== */
-function bindTabSwipe() {
   var tabs = document.getElementById("tabs");
   var startX = 0, startY = 0;
   var SWIPE_THRESHOLD = 50;
@@ -2827,8 +2937,7 @@ function onEnd() {
     clearTimeout(gHideTimer);
     gHideTimer = setTimeout(function(){
       try {
-        gCrossLine.style.display = "none";
-        gClTime.style.display = "none";
+        clearOverlay();
         removeCrosshairDetails();
         gLastCrossIdx = -1;
         if (gTapHint) gTapHint.style.opacity = "1";
@@ -2894,8 +3003,7 @@ function init() {
       return;
     }
     gChartArea = document.getElementById("chartArea");
-    gCrossLine = document.getElementById("crossLine");
-    gClTime = document.getElementById("clTime");
+    /* v18: crossLine/clTime DOM elements removed, using canvas overlay instead */
     gTapHint = document.getElementById("tapHint");
     gLegendBar = document.getElementById("legendBar");
     if (!gChartArea) { showError("找不到 #chartArea 元素"); return; }
