@@ -1764,7 +1764,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 15:38";
+var GEN_TIME = "2026-07-02 15:47";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2055,13 +2055,30 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
 
     var ca = gChart.chartArea;
-    /* 将触摸的 CSS X 转换为 canvas 内部坐标，再转为 chartArea 百分比 */
-    var canvasX = cssX * dprX;
-    var pctX = ((canvasX - ca.left) / ca.width) * 100;
-    /* 钳制到 [0, 100] */
-    pctX = Math.max(0, Math.min(pctX, 100));
 
-    gCrossLine.style.left = pctX + "%";
+    /*
+     * 竖线位置：直接用数据点的 canvas 坐标算百分比（和圆点同源）
+     * 不依赖触摸坐标的 dpr 转换，避免手机上位置偏差
+     */
+    var linePctX = null;
+    var datasets = gChart.data.datasets;
+    for (var di = 0; di < datasets.length; di++) {
+      var m = gChart.getDatasetMeta(di);
+      if (!m || m.hidden || !m.data || !m.data[idx]) continue;
+      var dp = m.data[idx];
+      if (typeof dp.x === "number") {
+        linePctX = ((dp.x - ca.left) / ca.width) * 100;
+        break;
+      }
+    }
+    /* 回退：如果拿不到数据点坐标，用触摸位置估算 */
+    if (linePctX === null) {
+      var canvasX = cssX * dprX;
+      linePctX = ((canvasX - ca.left) / ca.width) * 100;
+    }
+    linePctX = Math.max(0, Math.min(linePctX, 100));
+
+    gCrossLine.style.left = linePctX + "%";
     gCrossLine.style.display = "block";
 
     /* 底部时间 */
@@ -2231,24 +2248,32 @@ function updatePriceTags(idx) {
 function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine || !gChart) return;
-    var ca = gChart.chartArea;
-    if (!ca) return;
-    
-    /* 将 cssX (canvas CSS坐标) 转为 chartArea 百分比 */
-    var rect = gChart.canvas.getBoundingClientRect();
-    if (!rect || rect.width === 0) return;
-    var dprX = gChart.canvas.width / rect.width;
-    var canvasX = cssX * dprX;
-    var pctX = ((canvasX - ca.left) / ca.width) * 100;
+
+    /*
+     * 用 getBoundingClientRect 直接算触摸位置在 #chartArea 中的百分比
+     * 不依赖 dpr，PC/手机通用
+     */
+    var canvasRect = gChart.canvas.getBoundingClientRect();
+    var areaRect = gChartArea.getBoundingClientRect();
+    var offsetX = canvasRect.left - areaRect.left;
+    var areaW = areaRect.width;
+
+    /* 触摸位置在 chartArea 中的 X */
+    var touchInAreaX = cssX + offsetX;
+    var pctX = (touchInAreaX / areaW) * 100;
     pctX = Math.max(0, Math.min(pctX, 100));
 
     gCrossLine.style.left = pctX + "%";
 
     /* 圆点 X 跟随（Y 不变） */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ 
-      el.style.left = "calc(" + pctX.toFixed(2) + "% - 4px)"; 
+    [].forEach.call(dots, function(el){
+      el.style.left = "calc(" + pctX.toFixed(2) + "% - 4px)";
     });
+  } catch (err) {
+    logError("moveCrosshairOnly", err);
+  }
+}
   } catch (err) {
     logError("moveCrosshairOnly", err);
   }
