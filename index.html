@@ -720,7 +720,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 09:45";
+var GEN_TIME = "2026-07-02 09:46";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1081,12 +1081,11 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.cssY - b.cssY; });
 
-    /* 布局策略：
-       - 当只有1条线时：标签放在数据点下方
-       - 当有2条及以上时：交替放置——奇数索引放下方，偶数索引放上方
-       - 这样即使两条线非常接近，标签也会自然分散在上下两侧
-    */
-    var placed = []; /* {top, bottom, cssY} */
+    /* 布局策略（彻底重写）：
+       - 多个标签时，水平方向交替错开：第0个放数据点右侧，第1个放左侧，以此类推
+       - 垂直方向紧贴数据点（center = cssY），不上下偏移
+       - 这样即使两个数据点Y坐标完全一样，标签也不会重叠 */
+    var placed = []; /* {top, bottom, cssY, side} */
     var labels = [];
     var multiLine = items.length > 1;
 
@@ -1113,53 +1112,18 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* 多线模式交替上下；单线模式默认下方 */
-      var placeBelow;
+      /* 垂直位置：紧贴数据点 */
+      var center = cssY;
+
+      /* 确定水平侧：交替左右 */
+      var onRight;
       if (multiLine) {
-        /* 交替策略：第0个(上方的小Y)放上方，第1个(下方的大Y)放下方... */
-        placeBelow = (i % 2 === 1);
+        onRight = (i % 2 === 0); /* 第0个放右侧，第1个放左侧 */
       } else {
-        placeBelow = true;
+        onRight = true;
       }
 
-      var center;
-      if (placeBelow) {
-        center = cssY + halfH + PADDING + 12; /* 数据点下方，加大偏移 */
-      } else {
-        center = cssY - halfH - PADDING - 12; /* 数据点上方，加大偏移 */
-      }
-
-      /* 检查是否与已放置标签重叠，如果重叠则继续向当前方向偏移 */
-      var overlaps = true;
-      var attempts = 0;
-      while (overlaps && attempts < 20) {
-        overlaps = false;
-        for (var j = 0; j < placed.length; j++) {
-          if (center + halfH + MIN_GAP > placed[j].top && center - halfH - MIN_GAP < placed[j].bottom) {
-            overlaps = true;
-            break;
-          }
-        }
-        if (overlaps) {
-          if (placeBelow) {
-            center = placed[j].bottom + halfH + MIN_GAP;
-          } else {
-            center = placed[j].top - halfH - MIN_GAP;
-          }
-        }
-        attempts++;
-      }
-
-      /* 确保在图表内——但不要强制回弹到数据点附近，保持分散效果 */
-      if (center - halfH < areaTop + PADDING) center = areaTop + halfH + PADDING;
-      if (center + halfH > areaBottom - PADDING) center = areaBottom - halfH - PADDING;
-
-      var tagTop = center - halfH;
-      var tagBottom = center + halfH;
-      placed.push({top: tagTop, bottom: tagBottom, cssY: cssY});
-
-      /* 水平位置 */
-      var left = cssX + 6;
+      /* 计算水平位置 */
       var tag = existing[it.key];
       if (tag) {
         delete existing[it.key];
@@ -1171,13 +1135,29 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       }
       tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
       tag.style.display = "flex";
+      tag.style.left = "0px";
+      tag.style.top = "0px";
+      tag.style.transform = "none";
       var tagWidth = tag.offsetWidth || 80;
-      if (left + tagWidth + 4 > areaRight && cssX - tagWidth - 6 >= areaLeft) {
-        left = cssX - tagWidth - 6;
+      var tagHeight = tag.offsetHeight || 20;
+
+      var left;
+      if (onRight) {
+        left = cssX + 10;
+        /* 超出右边界则放左侧 */
+        if (left + tagWidth + 4 > areaRight) {
+          left = cssX - tagWidth - 10;
+        }
+      } else {
+        left = cssX - tagWidth - 10;
+        /* 超出左边界则放右侧 */
+        if (left < areaLeft) {
+          left = cssX + 10;
+        }
       }
+
       tag.style.left = left + "px";
-      tag.style.top = center + "px";
-      tag.style.transform = "translateY(-50%)";
+      tag.style.top = (center - tagHeight / 2) + "px";
 
       labels.push({el: tag, cssY: cssY, center: center});
     }
