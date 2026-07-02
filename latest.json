@@ -1,10 +1,10 @@
 {
-  "2026-07-02 14:00": {
+  "2026-07-02 15:27": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4064.68,
+      "intl_price": 4075.11,
       "intl_unit": "美元/盎司",
-      "cny_price": 886.6023,
+      "cny_price": 888.8774,
       "update_time": "2026-07-02 10:34:40",
       "prev_close": null
     },
@@ -18,22 +18,22 @@
     "boshi_etf": {
       "name": "博时黄金ETF",
       "code": "159937",
-      "price": 8.452,
+      "price": 8.454,
       "prev_close": 8.255,
-      "change": 0.19699999999999918,
-      "change_rate": 2.3864324651726125
+      "change": 0.19899999999999984,
+      "change_rate": 2.410660205935794
     },
     "gold_funds": {
       "002610": {
         "name": "博时黄金",
         "code": "002610",
         "etf_name": "博时黄金ETF",
-        "etf_price": 8.452,
-        "gold_price": 845.2,
+        "etf_price": 8.454,
+        "gold_price": 845.4,
         "prev_etf_price": 8.255,
         "prev_gold_price": 825.5,
-        "change": 0.19699999999999918,
-        "change_rate": 2.3864324651726125
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
       },
       "000216": {
         "name": "华安黄金",
@@ -61,23 +61,23 @@
         "name": "国泰黄金",
         "code": "000218",
         "etf_name": "国泰黄金ETF",
-        "etf_price": 8.885,
-        "gold_price": 888.5,
+        "etf_price": 8.883,
+        "gold_price": 888.3,
         "prev_etf_price": 8.67,
         "prev_gold_price": 867.0,
-        "change": 0.21499999999999986,
-        "change_rate": 2.4798154555940006
+        "change": 0.2129999999999992,
+        "change_rate": 2.4567474048442817
       },
       "000929": {
         "name": "博时黄金D",
         "code": "000929",
         "etf_name": "博时黄金ETF",
-        "etf_price": 8.452,
-        "gold_price": 845.2,
+        "etf_price": 8.454,
+        "gold_price": 845.4,
         "prev_etf_price": 8.255,
         "prev_gold_price": 825.5,
-        "change": 0.19699999999999918,
-        "change_rate": 2.3864324651726125
+        "change": 0.19899999999999984,
+        "change_rate": 2.410660205935794
       }
     },
     "brands": {
