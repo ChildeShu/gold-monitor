@@ -910,7 +910,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 10:30";
+var GEN_TIME = "2026-07-02 10:37";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1200,7 +1200,14 @@ function showCrosshair(cssX, idx, dprX, dprY) {
   try {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
 
-    gCrossLine.style.left = cssX + "px";
+    /* cssX 是相对于 canvas 的，转换为 chartArea 坐标 */
+    var canvasEl = gChart.canvas;
+    var canvasRect = canvasEl.getBoundingClientRect();
+    var areaRect = gChartArea.getBoundingClientRect();
+    var offsetX = canvasRect.left - areaRect.left;
+    var areaCssX = cssX + offsetX;
+
+    gCrossLine.style.left = areaCssX + "px";
     gCrossLine.style.display = "block";
 
     /* 底部时间 */
@@ -1225,31 +1232,40 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
 
+    /* 清理旧元素 */
     var existing = {};
     var oldTags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
-
     var existingDots = {};
     var oldDots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
-    /* chartArea 边界（CSS 像素）
-       注意：cssX 是相对于 canvas 的，但 gChartArea 是包含 canvas 的父 div。
-       需要获取 chartArea 相对于自身的坐标系统 */
+    /*
+     * ===== 坐标系统（重写） =====
+     *
+     * Chart.js canvas 内部坐标系：
+     *   pt.x, pt.y 是 canvas 物理像素（含 devicePixelRatio）
+     *   chartArea = {left, top, right, bottom} 也是 canvas 物理像素
+     *
+     * CSS 显示坐标（我们设置 DOM left/top 用的）：
+     *   cssX/cssY = canvas物理像素 / dpr
+     *
+     * 但 DOM 元素放在 #chartArea（包裹 canvas 的 div）里，
+     * 所以需要知道 canvas 在 div 中的偏移。
+     *
+     * 关键：canvas 在 responsive 模式下可能不等于 chartArea div 的完整尺寸。
+     * 最可靠的方法：用 canvas.getBoundingClientRect() 获取 canvas 在视口的位置，
+     * 然后把数据点的 canvas 坐标转成视口坐标，再转成 chartArea 的内部坐标。
+     */
+    var canvasEl = gChart.canvas;
+    var canvasRect = canvasEl.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
-    var canvasRect = gChart.canvas.getBoundingClientRect();
-    /* cssX 是相对于 canvas 左边缘的，需要转换为相对于 chartArea 左边缘的 */
-    var areaCssX = cssX + (canvasRect.left - areaRect.left);
-    var areaTop = 0;   /* chartArea 自身的坐标系，top 就是 0 */
-    var areaBottom = areaRect.height;
-    var areaLeft = 0;
-    var areaRight = areaRect.width;
-    var TAG_H = 22; /* 标签高度估算 */
-    var halfH = TAG_H / 2;
-    var MIN_GAP = 10; /* 标签间距 */
-    var PADDING = 4; /* 图表内边距 */
 
-    /* 先收集所有可见 series 的信息，按 Y 位置排序 */
+    /* canvas 相对于 chartArea 的偏移 */
+    var canvasOffsetX = canvasRect.left - areaRect.left;
+    var canvasOffsetY = canvasRect.top - areaRect.top;
+
+    /* 收集所有可见 series 的数据点信息 */
     var items = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
@@ -1260,37 +1276,33 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
 
-      var cssY;
+      /* 获取 Chart.js 数据点在 canvas 物理像素中的位置 */
       var pt = meta.data && meta.data[idx];
-      if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
-        /* canvas 坐标 → 相对于 canvas 的 CSS 像素 → 加上 canvas 在 chartArea 中的偏移 */
-        cssY = canvasToCssY(pt.y, dprY) + (canvasRect.top - areaRect.top);
-      } else {
-        var ys = gChart.scales[s.axis];
-        if (!ys) continue;
-        cssY = canvasToCssY(ys.getPixelForValue(v), dprY) + (canvasRect.top - areaRect.top);
-      }
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, cssY: cssY});
+      if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
+
+      /* 转为 CSS 像素（相对于 canvas 左上角） */
+      var ptCssX = pt.x / dprX;
+      var ptCssY = pt.y / dprY;
+
+      /* 转为相对于 chartArea 的坐标 */
+      var finalX = canvasOffsetX + ptCssX;
+      var finalY = canvasOffsetY + ptCssY;
+
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: finalX, y: finalY});
     }
 
     if (items.length === 0) return;
 
     /* 按 Y 从小到大排序（上方在前） */
-    items.sort(function(a, b){ return a.cssY - b.cssY; });
+    items.sort(function(a, b){ return a.y - b.y; });
 
-    /* 布局策略（最终版）：
-       - 标签紧挨数据点圆点，间距 2px
-       - 上下交错：偶数在圆点上方，奇数在下方
-       - 右侧优先，靠边自动换左侧
-    */
-    var labels = [];
-    var GAP = 2; /* 标签与圆点的间距 */
+    var DOT_R = 4; /* 圆点半径 */
+    var GAP = 2;   /* 标签与圆点间距 */
 
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      var cssY = it.cssY;
 
-      /* 圆点：始终在数据点位置 */
+      /* === 圆点：精确放在数据点 === */
       var dot = existingDots[it.key];
       if (dot) {
         delete existingDots[it.key];
@@ -1301,15 +1313,15 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      dot.style.left = areaCssX + "px";
-      dot.style.top = cssY + "px";
+      dot.style.left = it.x + "px";
+      dot.style.top = it.y + "px";
       if (gHighlightedSeries && gHighlightedSeries !== it.key) {
         dot.style.display = "none";
       } else {
         dot.style.display = "block";
       }
 
-      /* 创建标签 */
+      /* === 标签：紧挨圆点 === */
       var tag = existing[it.key];
       if (tag) {
         delete existing[it.key];
@@ -1327,32 +1339,35 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var tw = tag.offsetWidth || 80;
       var th = tag.offsetHeight || 20;
 
-      /* 垂直：紧挨圆点 */
-      var tt;
+      /* 垂直位置：紧挨圆点，上下交错 */
+      var tagTop;
       if (i % 2 === 1) {
-        tt = cssY + 4 + GAP;   /* 圆点半径4px + 间距 */
+        /* 奇数索引：放圆点下方 */
+        tagTop = it.y + DOT_R + GAP;
       } else {
-        tt = cssY - th - 4 - GAP; /* 圆点半径4px + 间距 */
+        /* 偶数索引：放圆点上方 */
+        tagTop = it.y - DOT_R - GAP - th;
       }
 
-      /* 水平：右侧优先，靠边换左侧 */
-      var tl = areaCssX + 10;
-      if (tl + tw + 2 > areaRight) tl = areaCssX - tw - 10;
-      if (tl < areaLeft) tl = Math.max(areaLeft, areaCssX - tw / 2);
+      /* 水平位置：右侧优先 */
+      var tagLeft = it.x + DOT_R + 6;
+      if (tagLeft + tw + 4 > areaRect.width) {
+        /* 右侧放不下，改左侧 */
+        tagLeft = it.x - DOT_R - 6 - tw;
+      }
+      if (tagLeft < 0) tagLeft = Math.max(0, it.x - tw / 2);
 
-      /* 边界钳位 */
-      if (tt < 2) tt = 2;
-      if (tt + th > areaBottom - 2) tt = areaBottom - th - 2;
+      /* 边界保护 */
+      if (tagTop < 0) tagTop = it.y + DOT_R + GAP;
+      if (tagTop + th > areaRect.height) tagTop = areaRect.height - th - 2;
 
-      tag.style.left = tl + "px";
-      tag.style.top = tt + "px";
-
-      labels.push({el: tag, cssY: cssY});
+      tag.style.left = tagLeft + "px";
+      tag.style.top = tagTop + "px";
     }
 
     /* 移除多余的旧标签和旧圆点 */
-    Object.keys(existing).forEach(function(k){ existing[k].remove(); });
-    Object.keys(existingDots).forEach(function(k){ existingDots[k].remove(); });
+    Object.keys(existing).forEach(function(k){ try{existing[k].remove();}catch(_){} });
+    Object.keys(existingDots).forEach(function(k){ try{existingDots[k].remove();}catch(_){} });
   } catch (err) {
     logError("updatePriceTags", err);
   }
@@ -1360,19 +1375,27 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
 function moveCrosshairOnly(cssX) {
   try {
-    if (!gChartArea || !gCrossLine) return;
-    gCrossLine.style.left = cssX + "px";
+    if (!gChartArea || !gCrossLine || !gChart) return;
+    var canvasEl = gChart.canvas;
+    var canvasRect = canvasEl.getBoundingClientRect();
+    var areaRect = gChartArea.getBoundingClientRect();
+    var offsetX = canvasRect.left - areaRect.left;
+
+    /* 竖线：cssX 是相对于 canvas 的，需要加偏移 */
+    gCrossLine.style.left = (cssX + offsetX) + "px";
+
+    /* 圆点跟随 */
     var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ el.style.left = cssX + "px"; });
-    /* 标签 X 也跟随移动，但重新计算左右 */
+    [].forEach.call(dots, function(el){ el.style.left = (cssX + offsetX) + "px"; });
+
+    /* 标签 X 也跟随移动，保持左右侧策略 */
     var tags = gChartArea.querySelectorAll(".price-tag");
+    var areaW = areaRect.width;
     [].forEach.call(tags, function(el){
-      var curLeft = parseFloat(el.style.left) || 0;
-      var tagWidth = el.offsetWidth || 80;
-      var areaRight = gChartArea.offsetWidth;
-      var newLeft = cssX + 6;
-      if (newLeft + tagWidth + 4 > areaRight && cssX - tagWidth - 6 >= 0) {
-        newLeft = cssX - tagWidth - 6;
+      var tw = el.offsetWidth || 80;
+      var newLeft = cssX + offsetX + 10;
+      if (newLeft + tw + 4 > areaW && cssX + offsetX - tw - 10 >= 0) {
+        newLeft = cssX + offsetX - tw - 10;
       }
       el.style.left = newLeft + "px";
     });
