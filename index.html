@@ -720,7 +720,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 09:02";
+var GEN_TIME = "2026-07-02 09:39";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1081,10 +1081,14 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序（上方在前） */
     items.sort(function(a, b){ return a.cssY - b.cssY; });
 
-    /* 布局策略：每个标签尝试放在数据点下方，空间不够则放上方。
-       标签水平放在竖线右侧（优先）或左侧 */
+    /* 布局策略：
+       - 当只有1条线时：标签放在数据点下方
+       - 当有2条及以上时：交替放置——奇数索引放下方，偶数索引放上方
+       - 这样即使两条线非常接近，标签也会自然分散在上下两侧
+    */
     var placed = []; /* {top, bottom, cssY} */
     var labels = [];
+    var multiLine = items.length > 1;
 
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
@@ -1109,23 +1113,26 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         dot.style.display = "block";
       }
 
-      /* 尝试放在数据点下方，然后是上方 */
-      var center = cssY + halfH + PADDING; /* 默认下方 */
-      var triedUp = false;
-      var triedDown = true;
-
-      /* 检查下方是否在图表内 */
-      if (center + halfH > areaBottom - PADDING) {
-        /* 下方出界，尝试上方 */
-        center = cssY - halfH - PADDING;
-        triedDown = false;
-        triedUp = true;
+      /* 多线模式交替上下；单线模式默认下方 */
+      var placeBelow;
+      if (multiLine) {
+        /* 交替策略：第0个(上方的小Y)放上方，第1个(下方的大Y)放下方... */
+        placeBelow = (i % 2 === 1);
+      } else {
+        placeBelow = true;
       }
 
-      /* 检查是否与已放置标签重叠 */
+      var center;
+      if (placeBelow) {
+        center = cssY + halfH + PADDING + 4; /* 数据点下方 */
+      } else {
+        center = cssY - halfH - PADDING - 4; /* 数据点上方 */
+      }
+
+      /* 检查是否与已放置标签重叠，如果重叠则继续向当前方向偏移 */
       var overlaps = true;
       var attempts = 0;
-      while (overlaps && attempts < 10) {
+      while (overlaps && attempts < 15) {
         overlaps = false;
         for (var j = 0; j < placed.length; j++) {
           if (center + halfH + MIN_GAP > placed[j].top && center - halfH - MIN_GAP < placed[j].bottom) {
@@ -1134,23 +1141,10 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
           }
         }
         if (overlaps) {
-          /* 继续向当前方向偏移 */
-          if (triedDown) {
+          if (placeBelow) {
             center = placed[j].bottom + halfH + MIN_GAP;
-            if (center + halfH > areaBottom - PADDING) {
-              /* 下方到底了，换上方 */
-              center = cssY - halfH - PADDING;
-              triedDown = false;
-              triedUp = true;
-            }
           } else {
             center = placed[j].top - halfH - MIN_GAP;
-            if (center - halfH < areaTop + PADDING) {
-              /* 上方到底了，强制放下方 */
-              center = areaBottom - halfH - PADDING;
-              triedDown = true;
-              triedUp = false;
-            }
           }
         }
         attempts++;
