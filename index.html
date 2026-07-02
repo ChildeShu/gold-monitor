@@ -815,7 +815,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 09:48";
+var GEN_TIME = "2026-07-02 09:52";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1138,11 +1138,17 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     var oldDots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
-    /* chartArea 边界（CSS 像素） */
-    var areaTop = canvasToCssY(ca.top, dprY);
-    var areaBottom = canvasToCssY(ca.bottom, dprY);
-    var areaLeft = canvasToCssX(ca.left, dprX);
-    var areaRight = canvasToCssX(ca.right, dprX);
+    /* chartArea 边界（CSS 像素）
+       注意：cssX 是相对于 canvas 的，但 gChartArea 是包含 canvas 的父 div。
+       需要获取 chartArea 相对于自身的坐标系统 */
+    var areaRect = gChartArea.getBoundingClientRect();
+    var canvasRect = gChart.canvas.getBoundingClientRect();
+    /* cssX 是相对于 canvas 左边缘的，需要转换为相对于 chartArea 左边缘的 */
+    var areaCssX = cssX + (canvasRect.left - areaRect.left);
+    var areaTop = 0;   /* chartArea 自身的坐标系，top 就是 0 */
+    var areaBottom = areaRect.height;
+    var areaLeft = 0;
+    var areaRight = areaRect.width;
     var TAG_H = 22; /* 标签高度估算 */
     var halfH = TAG_H / 2;
     var MIN_GAP = 10; /* 标签间距 */
@@ -1162,11 +1168,12 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var cssY;
       var pt = meta.data && meta.data[idx];
       if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
-        cssY = canvasToCssY(pt.y, dprY);
+        /* canvas 坐标 → 相对于 canvas 的 CSS 像素 → 加上 canvas 在 chartArea 中的偏移 */
+        cssY = canvasToCssY(pt.y, dprY) + (canvasRect.top - areaRect.top);
       } else {
         var ys = gChart.scales[s.axis];
         if (!ys) continue;
-        cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
+        cssY = canvasToCssY(ys.getPixelForValue(v), dprY) + (canvasRect.top - areaRect.top);
       }
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, cssY: cssY});
     }
@@ -1238,14 +1245,14 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
       var left;
       if (onRight) {
-        left = cssX + 10;
+        left = areaCssX + 10;
         if (left + tagWidth + 4 > areaRight) {
-          left = cssX - tagWidth - 10;
+          left = areaCssX - tagWidth - 10;
         }
       } else {
-        left = cssX - tagWidth - 10;
+        left = areaCssX - tagWidth - 10;
         if (left < areaLeft) {
-          left = cssX + 10;
+          left = areaCssX + 10;
         }
       }
 
