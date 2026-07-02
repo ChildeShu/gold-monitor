@@ -1764,7 +1764,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 15:12";
+var GEN_TIME = "2026-07-02 15:19";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2477,26 +2477,23 @@ function onMove(cssX) {
     var dprX = gChart.canvas.width / rect.width;
     var dprY = gChart.canvas.height / rect.height;
 
-    /* 先钳制到 canvas CSS 范围 */
+    /* 钳制到 canvas CSS 范围 */
     var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
     var canvasX = cssToCanvasX(clampedCssX, dprX);
 
-    /* 再钳制到 Chart.js 实际绘图区域 */
+    /* 再钳制到 Chart.js 实际绘图区域，用于找数据点索引 */
     var ca = gChart.chartArea;
     var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
     var idx = getIndexAtCanvasX(clampedCanvasX);
     if (idx < 0) return;
 
-    /* 关键修复：用数据点的实际 canvas 坐标反算回 CSS 坐标来定位竖线
-       而非直接使用触摸位置，确保竖线永远在图表绘图区域内 */
-    var snappedCssX = canvasToCssX(clampedCanvasX, dprX);
-
+    /* 传原始 clampedCssX（跟随手指），让 showCrosshair/moveCrosshairOnly 内部钳制到 chartArea 边界 */
     if (idx !== gLastCrossIdx) {
       gLastCrossIdx = idx;
-      showCrosshair(snappedCssX, idx, dprX, dprY);
+      showCrosshair(clampedCssX, idx, dprX, dprY);
       if (gTapHint) gTapHint.style.opacity = "0";
     } else {
-      moveCrosshairOnly(snappedCssX);
+      moveCrosshairOnly(clampedCssX);
     }
   } catch (err) {
     logError("onMove", err);
