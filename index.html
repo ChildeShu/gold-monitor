@@ -1764,7 +1764,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 16:08";
+var GEN_TIME = "2026-07-02 16:17";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2048,37 +2048,73 @@ function toggleHighlight(key) {
   }
 }
 
-/* ===== 竖线 + 价格标签（百分比定位，兼容所有设备） ===== */
+/* ===== 竖线 + 价格标签（全部从数据点坐标派生，不依赖手指位置） ===== */
 
-function showCrosshair(cssX, idx, dprX, dprY) {
+/**
+ * 从 Chart.js 数据点获取百分比坐标（相对于 #chartArea）
+ * 返回 {pctX, points: [{key,color,value,decimals,unit,pctX,pctY}]} 或 null
+ * pctX/pctY 均为 [0,100] 百分比，PC/手机通用
+ */
+function getDataPointPos(idx) {
   try {
-    if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
+    if (!gChart || !gChart.chartArea || !gChartArea || !gParsedData) return null;
 
     var ca = gChart.chartArea;
+    var group = GROUPS[gCurrentGroup];
+    var dsIndexMap = {};
+    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
 
-    /*
-     * 竖线位置：直接用数据点的 canvas 坐标算百分比（和圆点同源）
-     * 不依赖触摸坐标的 dpr 转换，避免手机上位置偏差
-     */
     var linePctX = null;
-    var datasets = gChart.data.datasets;
-    for (var di = 0; di < datasets.length; di++) {
-      var m = gChart.getDatasetMeta(di);
-      if (!m || m.hidden || !m.data || !m.data[idx]) continue;
-      var dp = m.data[idx];
-      if (typeof dp.x === "number") {
-        linePctX = ((dp.x - ca.left) / ca.width) * 100;
-        break;
-      }
-    }
-    /* 回退：如果拿不到数据点坐标，用触摸位置相对于 chartArea 估算 */
-    if (linePctX === null) {
-      var areaW = gChartArea ? gChartArea.getBoundingClientRect().width : 0;
-      linePctX = areaW > 0 ? (cssX / areaW) * 100 : 0;
-    }
-    linePctX = Math.max(0, Math.min(linePctX, 100));
+    var points = [];
 
-    gCrossLine.style.left = linePctX + "%";
+    for (var si = 0; si < group.series.length; si++) {
+      var s = group.series[si];
+      var dsIdx = dsIndexMap[s.key];
+      if (dsIdx === undefined) continue;
+      var meta = gChart.getDatasetMeta(dsIdx);
+      if (meta && meta.hidden) continue;
+
+      var v = gParsedData.datasets[s.key][idx];
+      if (v === null || v === undefined) continue;
+
+      var pt = meta.data && meta.data[idx];
+      if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
+
+      /* 用首个可见数据点的 X 作为竖线位置 */
+      if (linePctX === null) {
+        linePctX = ((pt.x - ca.left) / ca.width) * 100;
+      }
+
+      points.push({
+        key: s.key, color: s.color, value: v,
+        decimals: s.decimals, unit: s.unit,
+        pctX: ((pt.x - ca.left) / ca.width) * 100,
+        pctY: ((pt.y - ca.top) / ca.height) * 100
+      });
+    }
+
+    if (linePctX === null || points.length === 0) return null;
+    return {
+      pctX: Math.max(0, Math.min(linePctX, 100)),
+      points: points
+    };
+  } catch (err) {
+    logError("getDataPointPos", err);
+    return null;
+  }
+}
+
+/**
+ * 统一的十字线定位函数 —— 竖线、时间、圆点、标签全部从数据点坐标计算
+ * 手指只决定选哪个 idx，不参与任何定位计算
+ */
+function positionCrosshair(idx) {
+  try {
+    var pos = getDataPointPos(idx);
+    if (!pos) return;
+
+    /* 竖线：吸附到数据点 X */
+    gCrossLine.style.left = pos.pctX.toFixed(2) + "%";
     gCrossLine.style.display = "block";
 
     /* 底部时间 */
@@ -2087,20 +2123,46 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
     gClTime.style.display = "block";
 
-    updatePriceTags(idx);
+    /* 价格标签 + 圆点 */
+    updatePriceTagsWithPoints(pos.points);
+  } catch (err) {
+    logError("positionCrosshair", err);
+  }
+}
+
+/* showCrosshair / moveCrosshairOnly 都委托给 positionCrosshair —— 只传 idx */
+function showCrosshair(cssX, idx, dprX, dprY) {
+  try {
+    if (!gCrossLine) return;
+    gLastCrossIdx = idx;
+    positionCrosshair(idx);
+    if (gTapHint) gTapHint.style.opacity = "0";
   } catch (err) {
     logError("showCrosshair", err);
   }
 }
 
-function updatePriceTags(idx) {
+function moveCrosshairOnly(cssX) {
+  /* 忽略 cssX（手指位置），只用当前已选中的数据点索引重新定位 */
   try {
-    if (!gChart || !gChartArea || !gParsedData) return;
-    var ca = gChart.chartArea;
-    if (!ca) return;
-    var group = GROUPS[gCurrentGroup];
-    var dsIndexMap = {};
-    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+    if (gLastCrossIdx < 0 || !gCrossLine) return;
+    positionCrosshair(gLastCrossIdx);
+  } catch (err) {
+    logError("moveCrosshairOnly", err);
+  }
+}
+
+/**
+ * 渲染价格标签 + 圆点（接收预计算好的数据点坐标数组）
+ * points: [{key,color,value,decimals,unit,pctX,pctY}]
+ * 全部百分比定位，与设备无关
+ */
+function updatePriceTagsWithPoints(points) {
+  try {
+    if (!gChartArea || !points || points.length === 0) return;
+
+    var areaW = gChartArea.offsetWidth;
+    var areaH = gChartArea.offsetHeight;
 
     /* 清理旧元素 */
     var existing = {};
@@ -2110,35 +2172,8 @@ function updatePriceTags(idx) {
     var oldDots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
-    /* chartArea 尺寸 */
-    var areaW = gChartArea.offsetWidth;
-    var areaH = gChartArea.offsetHeight;
-
-    /* 收集所有可见 series 的数据点信息 —— 使用 chartArea 百分比坐标 */
-    var items = [];
-    for (var si = 0; si < group.series.length; si++) {
-      var s = group.series[si];
-      var dsIdx = dsIndexMap[s.key];
-      if (dsIdx === undefined) continue;
-      var meta = gChart.getDatasetMeta(dsIdx);
-      if (meta && meta.hidden) continue;
-      var v = gParsedData.datasets[s.key][idx];
-      if (v === null || v === undefined) continue;
-
-      var pt = meta.data && meta.data[idx];
-      if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
-
-      /* pt.x/pt.y 和 ca 都是 canvas 内部坐标 → 直接算百分比，不依赖 dpr */
-      var pctX = ((pt.x - ca.left) / ca.width) * 100;
-      var pctY = ((pt.y - ca.top) / ca.height) * 100;
-
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, pctX: pctX, pctY: pctY});
-    }
-
-    if (items.length === 0) return;
-
-    /* 按 Y 从小到大排序（百分比） */
-    items.sort(function(a, b){ return a.pctY - b.pctY; });
+    /* 按_Y_ 从小到大排序 */
+    var items = points.slice().sort(function(a, b){ return a.pctY - b.pctY; });
 
     var DOT_R_PX = 4;
     var MARGIN_PCT = 1.5;
@@ -2164,21 +2199,15 @@ function updatePriceTags(idx) {
       rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
     }
 
-    /*
-     * 布局：标签紧贴圆点，不重叠
-     * 使用百分比坐标，兼容所有设备
-     */
-
-    /* 初始位置：每个标签紧贴自己的圆点（百分比） */
+    /* 布局：标签紧贴圆点右下角，碰撞时推开 */
     var placements = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var rt = rawTags[i];
-      var tw = rt.w;
-      var th = rt.h;
+      var tw = rt.w, th = rt.h;
       var twPct = (tw / areaW) * 100;
 
-      /* 默认放右边 */
+      /* 默认放圆点右下 */
       var tagPctLeft = it.pctX + DOT_R_PX / areaW * 100 + 0.3;
       var tagPctTop = it.pctY + DOT_R_PX / areaH * 100 + 0.3;
 
@@ -2190,28 +2219,23 @@ function updatePriceTags(idx) {
       placements.push({left: tagPctLeft, top: tagPctTop, w: tw, h: th, wPct: twPct, hPct: (th / areaH) * 100});
     }
 
-    /* 碰撞检测 */
+    /* 碰撞检测：重叠的向下推 */
     for (var i = 0; i < placements.length; i++) {
       for (var j = i + 1; j < placements.length; j++) {
-        var a = placements[i];
-        var b = placements[j];
-
+        var a = placements[i], b = placements[j];
         var overlapX = !(a.left + a.wPct + TAG_SPACING_PCT < b.left || b.left + b.wPct + TAG_SPACING_PCT < a.left);
         var overlapY = !(a.top + a.hPct + TAG_SPACING_PCT < b.top || b.top + b.hPct + TAG_SPACING_PCT < a.top);
-
-        if (overlapX && overlapY) {
-          b.top = a.top + a.hPct + TAG_SPACING_PCT;
-        }
+        if (overlapX && overlapY) { b.top = a.top + a.hPct + TAG_SPACING_PCT; }
       }
     }
 
-    /* 应用位置 + 边界保护（全部百分比） */
+    /* 应用位置 */
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var rt = rawTags[i];
       var pl = placements[i];
 
-      /* 圆点：calc 百分比 - 像素 */
+      /* 圆点：紧贴数据点 */
       var dot = existingDots[it.key];
       if (dot) { delete existingDots[it.key]; }
       else {
@@ -2225,8 +2249,7 @@ function updatePriceTags(idx) {
       dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
       /* 标签边界保护 */
-      var fTop = pl.top;
-      var fLeft = pl.left;
+      var fTop = pl.top, fLeft = pl.left;
       if (fLeft < MARGIN_PCT) fLeft = MARGIN_PCT;
       if (fLeft + pl.wPct > 100 - MARGIN_PCT) fLeft = 100 - MARGIN_PCT - pl.wPct;
       if (fTop < MARGIN_PCT) fTop = it.pctY + DOT_R_PX / areaH * 100 + 0.3;
@@ -2241,23 +2264,7 @@ function updatePriceTags(idx) {
     Object.keys(existing).forEach(function(k){ try{existing[k].remove();}catch(_){} });
     Object.keys(existingDots).forEach(function(k){ try{existingDots[k].remove();}catch(_){} });
   } catch (err) {
-    logError("updatePriceTags", err);
-  }
-}
-
-function moveCrosshairOnly(cssX) {
-  try {
-    if (!gChartArea || !gCrossLine || !gChart) return;
-
-    /* cssX 是手指相对 gChartArea 左边缘的像素偏移 → 直接算百分比 */
-    var areaW = gChartArea.getBoundingClientRect().width;
-    if (areaW === 0) return;
-    var pctX = (cssX / areaW) * 100;
-    pctX = Math.max(0, Math.min(pctX, 100));
-
-    gCrossLine.style.left = pctX + "%";
-  } catch (err) {
-    logError("moveCrosshairOnly", err);
+    logError("updatePriceTagsWithPoints", err);
   }
 }
 
