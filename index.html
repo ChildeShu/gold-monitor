@@ -1764,7 +1764,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 15:47";
+var GEN_TIME = "2026-07-02 15:59";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2270,10 +2270,6 @@ function moveCrosshairOnly(cssX) {
     [].forEach.call(dots, function(el){
       el.style.left = "calc(" + pctX.toFixed(2) + "% - 4px)";
     });
-  } catch (err) {
-    logError("moveCrosshairOnly", err);
-  }
-}
   } catch (err) {
     logError("moveCrosshairOnly", err);
   }
