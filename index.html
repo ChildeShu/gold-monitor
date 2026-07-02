@@ -1669,7 +1669,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 13:52";
+var GEN_TIME = "2026-07-02 14:02";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1999,24 +1999,25 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
     /*
-     * ===== 坐标转换：Chart.js 内部坐标 → #chartArea div CSS坐标 =====
+     * ===== 坐标转换 v5 —— 触发式坐标法 =====
      *
-     * 核心原理：
-     *   Chart.js 的 meta.data[idx].x/y 基于 canvas 的内部像素尺寸 (canvas.width × height)
-     *   而 DOM 元素定位需要的是 CSS 像素尺寸 (canvas.clientWidth × clientHeight)
-     *   两者的比值就是精确的缩放因子，适用于任何设备（PC/手机/高DPI）
+     * 核心问题总结（经过 PC + 手机多次验证）：
+     *   - 竖线位置始终正确 → 说明 cssX (e.clientX - canvas.getBoundingClientRect().left) 可靠
+     *   - 圆点/标签位置在手机上飘走 → 说明 pt.x * (clientWidth/canvas.width) 不可靠
+     *   - 根因：手机/微信浏览器中 canvas.width 和 clientWidth 的比值异常
      *
-     *   cssX = pt.x × (canvas.clientWidth / canvas.width)
-     *   cssY = pt.y × (canvas.clientHeight / canvas.height)
-     *
-     * 因为 canvas 用 width:100%;height:100% 填满了 .chart-area，
-     * 且 .chart-area 无 padding/border，所以 canvas 的 (0,0) 就是 chartArea 的 (0,0)
+     * 新方案：
+     *   X坐标 → 直接使用传入的 cssX（与竖线同源，已验证正确）
+     *   Y坐标 → 用 Chart.js Y轴 scale 的 getPixelForValue 获取内部像素，
+     *           再通过 chartArea CSS高度 / chartArea.height 的比值转换
      */
-    var canvasEl = gChart.canvas;
-    var scaleX = canvasEl.clientWidth / canvasEl.width;
-    var scaleY = canvasEl.clientHeight / canvasEl.height;
+    var ca = gChart.chartArea;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
+    var canvasEl = gChart.canvas;
+
+    /* Y方向缩放：chartArea内部像素 → CSS像素 */
+    var yScaleRatio = areaH / ca.height;
 
     /* 收集所有可见 series 的数据点信息 */
     var items = [];
@@ -2032,11 +2033,12 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 直接用缩放因子转换：canvas内部像素 → CSS像素 */
-      var x = pt.x * scaleX;
-      var y = pt.y * scaleY;
+      /* X: 直接用 cssX（触摸事件坐标，与竖线一致） */
+      /* Y: 用数据点原始坐标 × Y缩放比 */
+      var x = cssX;
+      var y = pt.y * yScaleRatio;
 
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y, ptY_raw: pt.y});
     }
 
     if (items.length === 0) return;
@@ -2044,15 +2046,26 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     /* 按 Y 从小到大排序 */
     items.sort(function(a, b){ return a.y - b.y; });
 
-    /* 调试日志 */
+    /* 调试日志 + 手机可视浮层 */
     if (window._gDebug !== false) {
-      console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " canvas:" + Math.round(canvasEl.width) + "x" + Math.round(canvasEl.height) +
-        " css:" + Math.round(canvasEl.clientWidth) + "x" + Math.round(canvasEl.clientHeight) +
-        " scale:" + scaleX.toFixed(3) + "," + scaleY.toFixed(3));
+      var dbgInfo = "areaCSS:" + Math.round(areaW) + "x" + Math.round(areaH) +
+        " caInner:" + Math.round(ca.width) + "x" + Math.round(ca.height) +
+        " yRatio:" + yScaleRatio.toFixed(3) +
+        " cssX:" + cssX.toFixed(1);
       for (var di = 0; di < items.length; di++) {
-        console.log("  [" + di + "] " + items[di].key + " => (" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")");
+        dbgInfo += " | [" + di + "]" + items[di].key + "=(" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ") ptY=" + items[di].ptY_raw;
       }
+      console.log("[price-tag] " + dbgInfo);
+
+      /* 浮层显示（手机上也能看到） */
+      var dbgEl = document.getElementById("_dbgFloat");
+      if (!dbgEl) {
+        dbgEl = document.createElement("div");
+        dbgEl.id = "_dbgFloat";
+        dbgEl.style.cssText = "position:fixed;top:2px;right:2px;z-index:9999;background:rgba(255,0,0,0.85);color:#fff;font-size:10px;padding:4px;max-width:280px;word-break:break-all;font-family:monospace;";
+        document.body.appendChild(dbgEl);
+      }
+      dbgEl.textContent = dbgInfo;
     }
 
     var DOT_R = 4;
