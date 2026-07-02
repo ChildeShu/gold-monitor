@@ -1287,9 +1287,104 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
+  },
+  "2026-07-02 12:00": {
+    "intl_spot": {
+      "name": "国际黄金现货",
+      "intl_price": 4072.13,
+      "intl_unit": "美元/盎司",
+      "cny_price": 888.3452,
+      "update_time": "2026-07-02 10:34:40",
+      "prev_close": null
+    },
+    "au9999": {
+      "name": "AU9999",
+      "price": 905.75,
+      "prev_close": null,
+      "change": null,
+      "change_rate": null
+    },
+    "boshi_etf": {
+      "name": "博时黄金ETF",
+      "code": "159937",
+      "price": 8.432,
+      "prev_close": 8.255,
+      "change": 0.1769999999999996,
+      "change_rate": 2.144155057540879
+    },
+    "gold_funds": {
+      "002610": {
+        "name": "博时黄金",
+        "code": "002610",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.432,
+        "gold_price": 843.2,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1769999999999996,
+        "change_rate": 2.144155057540879
+      },
+      "000216": {
+        "name": "华安黄金",
+        "code": "000216",
+        "etf_name": "华安黄金ETF",
+        "etf_price": 8.45,
+        "gold_price": 845.0,
+        "prev_etf_price": 8.271,
+        "prev_gold_price": 827.1,
+        "change": 0.1789999999999985,
+        "change_rate": 2.164188127191373
+      },
+      "002963": {
+        "name": "易方达黄金",
+        "code": "002963",
+        "etf_name": "易方达黄金ETF",
+        "etf_price": 8.83,
+        "gold_price": 883.0,
+        "prev_etf_price": 8.642,
+        "prev_gold_price": 864.2,
+        "change": 0.1880000000000006,
+        "change_rate": 2.175422355936133
+      },
+      "000218": {
+        "name": "国泰黄金",
+        "code": "000218",
+        "etf_name": "国泰黄金ETF",
+        "etf_price": 8.858,
+        "gold_price": 885.8,
+        "prev_etf_price": 8.67,
+        "prev_gold_price": 867.0,
+        "change": 0.1880000000000006,
+        "change_rate": 2.168396770472902
+      },
+      "000929": {
+        "name": "博时黄金D",
+        "code": "000929",
+        "etf_name": "博时黄金ETF",
+        "etf_price": 8.432,
+        "gold_price": 843.2,
+        "prev_etf_price": 8.255,
+        "prev_gold_price": 825.5,
+        "change": 0.1769999999999996,
+        "change_rate": 2.144155057540879
+      }
+    },
+    "brands": {
+      "": 1208.0,
+      "周六福": 1203.0,
+      "老庙黄金": 1208.0,
+      "老凤祥": 1208.0,
+      "中国黄金": 1188.0,
+      "潮宏基": 1208.0,
+      "金至尊": 1208.0,
+      "谢瑞麟": 1208.0,
+      "六福珠宝": 1206.0,
+      "周生生": 1213.0,
+      "周大福": 1208.0
+    }
   }
 };
-var GEN_TIME = "2026-07-02 11:45";
+var GEN_TIME = "2026-07-02 12:35";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1671,8 +1766,8 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     }
 
     var DOT_R = 4;
-    var TAG_PAD_X = 6;  /* 标签内水平padding */
-    var TAG_PAD_Y = 3;  /* 标签内垂直padding */
+    var MARGIN = 6;
+    var TAG_SPACING = 2;
 
     /* 先创建所有标签获取真实尺寸 */
     var rawTags = [];
@@ -1696,130 +1791,82 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     }
 
     /*
-     * ===== 布局策略 =====
-     * 目标：标签紧贴数据点圆点，两个标签不重叠，靠边自动换侧
-     *
-     * 对于2个标签的情况：
-     *   - 上方的标签 → 放在圆点的 左上方（标签右下角对齐圆点左上角）
-     *   - 下方的标签 → 放在圆点的 右下方（标签左上角对齐圆点右下角）
-     * 这样形成对角线布局，天然不会重叠
-     *
-     * 右侧空间不足时，整体镜像到左边
+     * 布局：标签紧贴圆点，不重叠
+     * 策略：
+     *   - 每个标签紧贴自己对应的数据点（圆点旁边2px）
+     *   - 碰撞检测，重叠时自动推开
      */
-    var MARGIN = 6;
-    var preferRight = true;
 
-    /* 检查右侧是否有足够空间放最大的标签 */
+    /* 左右偏好 */
     var maxTw = 0;
     for (var i = 0; i < rawTags.length; i++) { if (rawTags[i].w > maxTw) maxTw = rawTags[i].w; }
-    var rightSpace = areaW - (items[0].x + DOT_R);
-    if (rightSpace < maxTw + MARGIN) {
-      preferRight = false;
-    }
-    /* 检查左侧是否有足够空间 */
-    if (!preferRight) {
-      var leftSpace = items[0].x - DOT_R;
-      if (leftSpace < maxTw + MARGIN) {
-        /* 两边都不够宽，用居中策略 */
-        preferRight = true; /* 回到右边，尽量显示 */
-      }
-    }
+    var rightSpace = areaW - (items[items.length - 1].x + DOT_R);
+    var preferRight = (rightSpace >= maxTw + MARGIN);
 
+    /* 初始位置：每个标签紧贴自己的圆点 */
+    var placements = [];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var rt = rawTags[i];
       var tw = rt.w;
       var th = rt.h;
 
-      /* 圆点：始终在数据点位置 */
+      /* 默认放右边 */
+      var tagLeft = it.x + DOT_R + 2;
+      var tagTop = it.y + DOT_R + 2;
+
+      /* 右边不够 → 放左边 */
+      if (tagLeft + tw > areaW - MARGIN) {
+        tagLeft = it.x - DOT_R - tw - 2;
+      }
+
+      placements.push({left: tagLeft, top: tagTop, w: tw, h: th});
+    }
+
+    /* 碰撞检测：从上往下逐对检查，有碰撞就向下推 */
+    for (var i = 0; i < placements.length; i++) {
+      for (var j = i + 1; j < placements.length; j++) {
+        var a = placements[i];
+        var b = placements[j];
+
+        var overlapX = !(a.left + a.w + TAG_SPACING < b.left || b.left + b.w + TAG_SPACING < a.left);
+        var overlapY = !(a.top + a.h + TAG_SPACING < b.top || b.top + b.h + TAG_SPACING < a.top);
+
+        if (overlapX && overlapY) {
+          b.top = a.top + a.h + TAG_SPACING;
+        }
+      }
+    }
+
+    /* 应用位置 + 边界钳制 */
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var rt = rawTags[i];
+      var pl = placements[i];
+
       var dot = existingDots[it.key];
-      if (dot) {
-        delete existingDots[it.key];
-      } else {
+      if (dot) { delete existingDots[it.key]; }
+      else {
         dot = document.createElement("div");
-        dot.className = "highlight-dot";
-        dot.dataset.key = it.key;
+        dot.className = "highlight-dot"; dot.dataset.key = it.key;
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
       dot.style.left = (it.x - DOT_R) + "px";
       dot.style.top = (it.y - DOT_R) + "px";
-      if (gHighlightedSeries && gHighlightedSeries !== it.key) {
-        dot.style.display = "none";
-      } else {
-        dot.style.display = "block";
-      }
+      dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
-      /* 标签位置 */
+      /* 标签边界保护 */
+      var fTop = pl.top;
+      var fLeft = pl.left;
+      if (fLeft < MARGIN) fLeft = MARGIN;
+      if (fLeft + pl.w > areaW - MARGIN) fLeft = areaW - MARGIN - pl.w;
+      if (fTop < MARGIN) fTop = it.y + DOT_R + 2;
+      if (fTop + pl.h > areaH - MARGIN) fTop = areaH - MARGIN - pl.h;
+
       rt.tag.style.visibility = "visible";
-
-      var tagLeft, tagTop;
-
-      if (items.length === 1) {
-        /* 单个标签：默认右下方 */
-        tagLeft = it.x + DOT_R + 3;
-        tagTop = it.y + DOT_R + 3;
-        if (tagLeft + tw > areaW - MARGIN) {
-          tagLeft = it.x - DOT_R - tw - 3;
-        }
-        if (tagLeft < MARGIN) tagLeft = MARGIN;
-        if (tagTop + th > areaH - MARGIN) {
-          tagTop = it.y - DOT_R - th - 3;
-        }
-        if (tagTop < MARGIN) tagTop = it.y + DOT_R + 3;
-      } else {
-        /* 多个标签：对角线布局 */
-        var isUpper = (i === 0); /* 已按y排序，第一个是上面的点 */
-        if (preferRight) {
-          if (isUpper) {
-            /* 上面的标签：放在圆点右上 → 标签左边缘贴圆点右侧 */
-            tagLeft = it.x + DOT_R + 2;
-            tagTop = it.y - DOT_R - th - 2;
-          } else {
-            /* 下面的标签：放在圆点右下 → 标签左上角贴圆点下方 */
-            tagLeft = it.x + DOT_R + 2;
-            tagTop = it.y + DOT_R + 2;
-          }
-          /* 右侧放不下则切到左侧 */
-          if (tagLeft + tw > areaW - MARGIN) {
-            if (isUpper) {
-              tagLeft = it.x - DOT_R - tw - 2;
-              tagTop = it.y - DOT_R - th - 2;
-            } else {
-              tagLeft = it.x - DOT_R - tw - 2;
-              tagTop = it.y + DOT_R + 2;
-            }
-          }
-        } else {
-          /* 偏好左侧 */
-          if (isUpper) {
-            tagLeft = it.x - DOT_R - tw - 2;
-            tagTop = it.y - DOT_R - th - 2;
-          } else {
-            tagLeft = it.x - DOT_R - tw - 2;
-            tagTop = it.y + DOT_R + 2;
-          }
-          /* 左侧放不下则切回右侧 */
-          if (tagLeft < MARGIN) {
-            if (isUpper) {
-              tagLeft = it.x + DOT_R + 2;
-              tagTop = it.y - DOT_R - th - 2;
-            } else {
-              tagLeft = it.x + DOT_R + 2;
-              tagTop = it.y + DOT_R + 2;
-            }
-          }
-        }
-      }
-
-      /* 最终边界钳制 */
-      if (tagLeft < MARGIN) tagLeft = MARGIN;
-      if (tagLeft + tw > areaW - MARGIN) tagLeft = areaW - MARGIN - tw;
-      if (tagTop < MARGIN) tagTop = MARGIN;
-      if (tagTop + th > areaH - MARGIN) tagTop = areaH - MARGIN - th;
-
-      rt.tag.style.left = Math.round(tagLeft) + "px";
-      rt.tag.style.top = Math.round(tagTop) + "px";
+      rt.tag.style.left = Math.round(fLeft) + "px";
+      rt.tag.style.top = Math.round(fTop) + "px";
     }
 
     /* 移除多余旧元素 */
