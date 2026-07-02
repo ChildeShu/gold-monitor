@@ -102,8 +102,7 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
   border:2px solid #fff;
   box-shadow:0 0 0 2px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.5);
   pointer-events:none;z-index:21;
-  transform:translate(-50%, -50%);
-  transition:left 0.1s ease-out, top 0.1s ease-out;
+  /* 不用 transform，直接用 left/top 定位圆心 */
 }
 
 .legend-bar{
@@ -910,7 +909,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 10:37";
+var GEN_TIME = "2026-07-02 10:39";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1302,7 +1301,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
 
-      /* === 圆点：精确放在数据点 === */
+      /* === 圆点：精确放在数据点（left/top 是圆心位置） === */
       var dot = existingDots[it.key];
       if (dot) {
         delete existingDots[it.key];
@@ -1313,8 +1312,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      dot.style.left = it.x + "px";
-      dot.style.top = it.y + "px";
+      /* 圆心在 (it.x, it.y)，圆的左上角偏移半个尺寸 */
+      dot.style.left = (it.x - DOT_R) + "px";
+      dot.style.top = (it.y - DOT_R) + "px";
       if (gHighlightedSeries && gHighlightedSeries !== it.key) {
         dot.style.display = "none";
       } else {
@@ -1339,21 +1339,21 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var tw = tag.offsetWidth || 80;
       var th = tag.offsetHeight || 20;
 
-      /* 垂直位置：紧挨圆点，上下交错 */
+      /* 垂直位置：紧挨圆点边缘，上下交错 */
       var tagTop;
       if (i % 2 === 1) {
-        /* 奇数索引：放圆点下方 */
+        /* 奇数索引：放圆点下方（紧贴圆点底部） */
         tagTop = it.y + DOT_R + GAP;
       } else {
-        /* 偶数索引：放圆点上方 */
+        /* 偶数索引：放圆点上方（紧贴圆点顶部） */
         tagTop = it.y - DOT_R - GAP - th;
       }
 
-      /* 水平位置：右侧优先 */
-      var tagLeft = it.x + DOT_R + 6;
+      /* 水平位置：紧挨圆点右侧 */
+      var tagLeft = it.x + DOT_R + 4;
       if (tagLeft + tw + 4 > areaRect.width) {
-        /* 右侧放不下，改左侧 */
-        tagLeft = it.x - DOT_R - 6 - tw;
+        /* 右侧放不下，改左侧紧挨圆点 */
+        tagLeft = it.x - DOT_R - 4 - tw;
       }
       if (tagLeft < 0) tagLeft = Math.max(0, it.x - tw / 2);
 
