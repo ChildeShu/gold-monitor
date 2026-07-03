@@ -2236,7 +2236,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-02 20:27";
+var GEN_TIME = "2026-07-03 09:27";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2565,8 +2565,9 @@ function clearOverlay() {
 /**
  * 绘制虚线竖线 + 时间标签 + 圆点 + 价格标签（全部在 overlay canvas 上）
  * @param {number} idx - 数据点索引
+ * @param {number} [overrideLineX] - 可选：竖线 X 位置（canvas 内部坐标），不传则用数据点位置
  */
-function drawCrosshair(idx) {
+function drawCrosshair(idx, overrideLineX) {
   try {
     if (!gChart || !gOverlayCtx || !gParsedData || idx < 0) return;
 
@@ -2599,7 +2600,7 @@ function drawCrosshair(idx) {
     if (pts.length === 0) return;
 
     /* ---- 1. 竖线（从图表区顶部到底部）---- */
-    var lineX = pts[0].x;
+    var lineX = (overrideLineX !== undefined && overrideLineX !== null) ? overrideLineX : pts[0].x;
     gOverlayCtx.save();
     gOverlayCtx.strokeStyle = 'rgba(212,175,55,0.8)';
     gOverlayCtx.lineWidth = 1;
@@ -2728,9 +2729,25 @@ function showCrosshair(cssX, idx, dprX, dprY) {
 }
 
 function moveCrosshairOnly(cssX) {
-  /* 忽略手指位置，用已选中的 idx 重绘 */
+  /* 竖线跟随手指位置，标签/圆点保持在数据点上 */
   try {
-    if (gCrossIdx >= 0) drawCrosshair(gCrossIdx);
+    if (gCrossIdx < 0 || !gChart || !gChartArea || !gChart.canvas) return;
+
+    var cv = gChart.canvas;
+    var cvRect = cv.getBoundingClientRect();
+    var areaRect = gChartArea.getBoundingClientRect();
+    if (!areaRect || areaRect.width === 0) return;
+
+    var dprX = cv.width / cvRect.width;
+    var ca = gChart.chartArea;
+    if (!ca) return;
+
+    /* 手指在 chartArea 中的位置 → 转换为 canvas 内部 X */
+    var clampedCssX = Math.max(0, Math.min(cssX, areaRect.width));
+    var fingerCanvasX = ca.left + (clampedCssX / areaRect.width) * ca.width;
+    fingerCanvasX = Math.max(ca.left, Math.min(fingerCanvasX, ca.right));
+
+    drawCrosshair(gCrossIdx, fingerCanvasX);
   } catch (err) { logError('moveCrosshairOnly', err); }
 }
 
