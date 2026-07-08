@@ -388,24 +388,6 @@ function parseData() {
   }
 }
 
-/* ===== 根据 canvas 内部像素 X 找数据点索引 ===== */
-function getIndexAtCanvasX(canvasX) {
-  var xs = gChart.scales.x;
-  if (!xs) return -1;
-  var n = gChart.data.labels.length;
-  if (n === 0) return -1;
-  var L = xs.getPixelForValue(0);
-  var R = xs.getPixelForValue(n - 1);
-  if (canvasX <= L) return 0;
-  if (canvasX >= R) return n - 1;
-  for (var i = 0; i < n - 1; i++) {
-    var p0 = xs.getPixelForValue(i);
-    var p1 = xs.getPixelForValue(i + 1);
-    if (canvasX <= (p0 + p1) / 2) return i;
-  }
-  return n - 1;
-}
-
 /* ===== 构建 dataset ===== */
 function buildDatasets(data, groupName) {
   var group = GROUPS[groupName];
@@ -570,23 +552,123 @@ function toggleHighlight(key) {
  * onMove 传入的是 CSS 像素 X（相对 canvas 左边缘）。
  * 这里统一转成 canvas 内部像素再找 idx。
  */
-function showCrosshair(canvasX, idx) {
+/*
+ * getFractionalIndexAtCanvasX -- 把 canvas 内部像素 X 映射成「分数索引」
+ * f∈[0, n-1]，即数据点之间的连续位置。滑动时竖线/圆点直接跟随 f，
+ * 不再吸附到整数点，从而消除「从一个数据点跳到下一个」的生硬感。
+ * 采用分段线性映射，对数据点不等距分布也精确且连续。
+ */
+function getFractionalIndexAtCanvasX(canvasX) {
+  var xs = gChart.scales.x;
+  if (!xs) return 0;
+  var n = gChart.data.labels.length;
+  if (n <= 1) return 0;
+  var L = xs.getPixelForValue(0);
+  if (canvasX <= L) return 0;
+  var R = xs.getPixelForValue(n - 1);
+  if (canvasX >= R) return n - 1;
+  for (var i = 0; i < n - 1; i++) {
+    var p0 = xs.getPixelForValue(i);
+    var p1 = xs.getPixelForValue(i + 1);
+    if (canvasX <= p1) {
+      var span = p1 - p0;
+      var frac = span !== 0 ? (canvasX - p0) / span : 0;
+      return i + Math.max(0, Math.min(1, frac));
+    }
+  }
+  return n - 1;
+}
+
+/*
+ * collectHighlightData(f) -- 分数索引处的圆点数据。
+ * 圆点 X 跟随手指连续位置 gCrossX（与竖线重合）；
+ * 圆点 Y 在相邻两个数据点之间线性插值，因此圆点始终贴着数据线平滑滑动。
+ */
+function collectHighlightData(f) {
+  try {
+    if (!gChart || !gParsedData) return;
+    var chart = gChart;
+    var group = GROUPS[gCurrentGroup];
+    var xScale = chart.scales.x;
+    if (!xScale) return;
+    var n = gChart.data.labels.length;
+    if (n <= 0) return;
+
+    var idx0 = Math.floor(f);
+    if (idx0 < 0) idx0 = 0;
+    if (idx0 > n - 1) idx0 = n - 1;
+    var idx1 = idx0 + 1;
+    if (idx1 > n - 1) idx1 = n - 1;
+    var frac = f - idx0;
+    if (frac < 0) frac = 0; else if (frac > 1) frac = 1;
+    var crossX = (typeof gCrossX === "number") ? gCrossX : xScale.getPixelForValue(idx0);
+
+    gHighlightItems = [];
+    for (var si = 0; si < group.series.length; si++) {
+      var s = group.series[si];
+      var dsIdx = -1;
+      for (var di = 0; di < chart.data.datasets.length; di++) {
+        if (chart.data.datasets[di].seriesKey === s.key) { dsIdx = di; break; }
+      }
+      if (dsIdx < 0) continue;
+      var meta = chart.getDatasetMeta(dsIdx);
+      if (meta && meta.hidden) continue;
+      var arr = gParsedData.datasets[s.key];
+      var v0 = arr[idx0], v1 = arr[idx1];
+      var yScale = chart.scales[s.axis];
+      if (!yScale) continue;
+
+      var val, py;
+      if (v0 === null || v0 === undefined || v1 === null || v1 === undefined) {
+        /* 某一端缺数据：退化为最近一端的值 */
+        val = (frac < 0.5) ? v0 : v1;
+        if (val === null || val === undefined) continue;
+        py = yScale.getPixelForValue(val);
+      } else {
+        val = v0 + (v1 - v0) * frac;
+        py = yScale.getPixelForValue(val);
+      }
+      if (typeof py !== "number" || !isFinite(py)) continue;
+
+      gHighlightItems.push({
+        key: s.key,
+        color: s.color,
+        value: val,
+        decimals: s.decimals,
+        unit: s.unit,
+        ptX: crossX,
+        ptY: py
+      });
+    }
+    /* 按 Y 排序（从上到下绘制，配合防重叠布局） */
+    gHighlightItems.sort(function(a, b){ return a.ptY - b.ptY; });
+  } catch (err) {
+    logError("collectHighlightData", err);
+  }
+}
+
+/*
+ * updateCrosshair(cssX) -- 连续更新十字线。
+ * 竖线 X 直接跟随手指（CSS 像素，已被 chartArea 夹紧），不再吸附整点；
+ * 圆点用分数索引在相邻数据点间插值 → 整体随手指平滑移动，消除跳点生硬感。
+ */
+function updateCrosshair(cssX) {
   try {
     if (!gChart || !gChart.chartArea || !gParsedData) return;
     var ca = gChart.chartArea;
+    var clampedX = Math.max(ca.left, Math.min(cssX, ca.right));
+    var n = gChart.data.labels.length;
+    if (n <= 0) return;
 
-    /* 竖线 X 吸附到该数据点的 exact 像素位置（保证竖线与圆点 X 完全重合） */
-    var clampedX = Math.max(ca.left, Math.min(canvasX, ca.right));
-    var xScale = gChart.scales.x;
-    var snapX = (xScale && typeof xScale.getPixelForValue === "function")
-      ? xScale.getPixelForValue(idx) : clampedX;
-    snapX = Math.max(ca.left, Math.min(snapX, ca.right));
-
-    /* 竖线 X（canvas 内部像素） */
-    gCrossX = snapX;
+    /* 竖线：跟随手指连续位置（丝滑关键） */
+    gCrossX = clampedX;
     gCrossActive = true;
 
-    /* 底部时间文本 */
+    /* 时间文本：取最近的数据点 */
+    var f = getFractionalIndexAtCanvasX(clampedX);
+    var idx = Math.round(f);
+    if (idx < 0) idx = 0;
+    if (idx > n - 1) idx = n - 1;
     var label = gParsedData.rawLabels[idx];
     if (label) {
       var p = label.split(" ");
@@ -595,83 +677,11 @@ function showCrosshair(canvasX, idx) {
       gCrossTimeText = "";
     }
 
-    /* 收集圆点数据 -> 只重绘覆盖层（不重绘整图，丝滑） */
-    collectHighlightData(idx);
+    collectHighlightData(f);
     drawOverlay();
     if (gTapHint) gTapHint.style.opacity = "0";
   } catch (err) {
-    logError("showCrosshair", err);
-  }
-}
-
-/*
- * collectHighlightData -- 使用 Chart.js 官方 scale.getPixelForValue() API
- * 计算圆点坐标（canvas 内部像素），与数据线渲染同一坐标系，全平台可靠。
- *
- * 关键：圆点 X 用 xScale.getPixelForValue(idx)（与竖线同一位置），
- *       Y 用对应 yAxis.getPixelForValue(value)。
- */
-function collectHighlightData(idx) {
-  try {
-    if (!gChart || !gParsedData) return;
-    var chart = gChart;
-    var group = GROUPS[gCurrentGroup];
-    var xScale = chart.scales.x;
-    if (!xScale) return;
-
-    gHighlightItems = [];
-    for (var si = 0; si < group.series.length; si++) {
-      var s = group.series[si];
-      /* 找 dataset index */
-      var dsIdx = -1;
-      for (var di = 0; di < chart.data.datasets.length; di++) {
-        if (chart.data.datasets[di].seriesKey === s.key) { dsIdx = di; break; }
-      }
-      if (dsIdx < 0) continue;
-      var meta = chart.getDatasetMeta(dsIdx);
-      if (meta && meta.hidden) continue;
-      var v = gParsedData.datasets[s.key][idx];
-      if (v === null || v === undefined) continue;
-      var yScale = chart.scales[s.axis];
-      if (!yScale) continue;
-
-      /* 官方 API：返回 canvas 内部像素坐标 */
-      var px = xScale.getPixelForValue(idx);
-      var py = yScale.getPixelForValue(v);
-      if (typeof px !== "number" || typeof py !== "number") continue;
-      if (!isFinite(px) || !isFinite(py)) continue;
-
-      gHighlightItems.push({
-        key: s.key,
-        color: s.color,
-        value: v,
-        decimals: s.decimals,
-        unit: s.unit,
-        ptX: px,
-        ptY: py
-      });
-    }
-    /* 按 Y 排序（从上到下绘制） */
-    gHighlightItems.sort(function(a, b){ return a.ptY - b.ptY; });
-  } catch (err) {
-    logError("collectHighlightData", err);
-  }
-}
-
-
-function moveCrosshairOnly(canvasX) {
-  try {
-    if (!gChart || !gChart.chartArea) return;
-    var ca = gChart.chartArea;
-    var xScale = gChart.scales.x;
-    /* 吸附到当前 idx 的 exact 像素位置，保证竖线与圆点始终重合 */
-    var snapX = (xScale && typeof xScale.getPixelForValue === "function")
-      ? xScale.getPixelForValue(gLastCrossIdx) : canvasX;
-    snapX = Math.max(ca.left, Math.min(snapX, ca.right));
-    gCrossX = snapX;
-    drawOverlay();
-  } catch (err) {
-    logError("moveCrosshairOnly", err);
+    logError("updateCrosshair", err);
   }
 }
 
@@ -859,23 +869,10 @@ function bindEvents() {
 
 function onMove(cssX) {
   try {
-    if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
-    var ca = gChart.chartArea;
-
-    /* cssX 已是「相对 canvas 左边缘」的 CSS(逻辑)像素。
-       getPixelForValue() / chartArea 也都在同一逻辑像素空间，
-       所以直接比较即可 —— 绝不能乘 dpr（那会把坐标放大 DPR 倍，
-       在高 DPI / 手机上导致竖线跑到手指右侧很远）。 */
-    var clampedX = Math.max(ca.left, Math.min(cssX, ca.right));
-    var idx = getIndexAtCanvasX(clampedX);
-    if (idx < 0) return;
-
-    if (idx !== gLastCrossIdx) {
-      gLastCrossIdx = idx;
-      showCrosshair(clampedX, idx);
-    } else {
-      moveCrosshairOnly(clampedX);
-    }
+    /* cssX 已是「相对 canvas 左边缘」的 CSS(逻辑)像素，
+       与 getPixelForValue() / chartArea 同一空间，直接比较即可（绝不乘 dpr）。
+       连续更新竖线/圆点，随手指平滑滑动。 */
+    updateCrosshair(cssX);
   } catch (err) {
     logError("onMove", err);
   }
