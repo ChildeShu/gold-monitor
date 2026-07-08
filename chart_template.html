@@ -656,11 +656,7 @@ function moveCrosshairOnly(cssX) {
     /* 竖线：cssX 是相对于 canvas 的，需要加偏移 */
     gCrossLine.style.left = (cssX + offsetX) + "px";
 
-    /* 圆点跟随 */
-    var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ el.style.left = (cssX + offsetX) + "px"; });
-
-    /* 标签 X 也跟随移动，保持左右侧策略 */
+    /* 标签跟随竖线，保持左右侧策略；圆点保持在数据点位置不随竖线平移 */
     var tags = gChartArea.querySelectorAll(".price-tag");
     var areaW = areaRect.width;
     [].forEach.call(tags, function(el){
@@ -862,10 +858,13 @@ function onMove(cssX) {
     var dprX = gChart.canvas.width / rect.width;
     var dprY = gChart.canvas.height / rect.height;
 
-    var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
-    var canvasX = cssToCanvasX(clampedCssX, dprX);
-
+    /* 将交互 X 限制在 chartArea 绘制边界内，避免竖线出界 */
     var ca = gChart.chartArea;
+    var chartLeftCss = ca.left / dprX;
+    var chartRightCss = ca.right / dprX;
+    var clampedCssX = Math.max(chartLeftCss, Math.min(cssX, chartRightCss));
+
+    var canvasX = cssToCanvasX(clampedCssX, dprX);
     var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
     var idx = getIndexAtCanvasX(clampedCanvasX);
     if (idx < 0) return;

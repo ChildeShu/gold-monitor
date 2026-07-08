@@ -83,11 +83,11 @@ jobs:
           from gold_monitor import generate_chart_html
           generate_chart_html('/tmp/chart_output.html')
           "
-          # 部署到 gh-pages
-          cp /tmp/chart_output.html /tmp/index.html
+          # 部署到 gh-pages（先丢弃工作区临时修改，避免 checkout 冲突）
+          git reset --hard || true
           git fetch origin gh-pages 2>/dev/null || true
           if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
-            git checkout gh-pages
+            git checkout -f gh-pages
             git pull origin gh-pages 2>/dev/null || true
           else
             git checkout --orphan gh-pages
