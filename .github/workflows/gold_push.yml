@@ -88,6 +88,8 @@ jobs:
               print('CHART_GENERATED=none')
               sys.exit(1)
           "
+          # 保存最新数据快照（reset --hard 会清除它）—— 供静态页 fetchLatest() 自动刷新
+          cp latest.json /tmp/latest_snapshot.json 2>/dev/null || true
           # 部署到 gh-pages（先丢弃工作区临时修改，避免 checkout 冲突）
           git reset --hard || true
           git fetch origin gh-pages 2>/dev/null || true
@@ -99,7 +101,10 @@ jobs:
             git rm -rf . 2>/dev/null || true
           fi
           cp /tmp/chart_output.html index.html
-          git add index.html
+          cp /tmp/latest_snapshot.json latest.json 2>/dev/null || true
+          # 禁用 Jekyll，保证页面字节级原样部署（避免任何处理干扰 JS）
+          : > .nojekyll
+          git add index.html latest.json .nojekyll
           if ! git diff --cached --quiet; then
             git commit -m "Update chart $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
             for i in 1 2 3; do
