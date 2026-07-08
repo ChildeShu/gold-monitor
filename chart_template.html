@@ -298,29 +298,6 @@ function parseData() {
   }
 }
 
-/* ===== 坐标转换工具 ===== */
-function cssToCanvasX(cssX, dprX) {
-  if (dprX === undefined) {
-    var r = gChart.canvas.getBoundingClientRect();
-    dprX = gChart.canvas.width / r.width;
-  }
-  return cssX * dprX;
-}
-function canvasToCssX(canvasX, dprX) {
-  if (dprX === undefined) {
-    var r = gChart.canvas.getBoundingClientRect();
-    dprX = gChart.canvas.width / r.width;
-  }
-  return canvasX / dprX;
-}
-function canvasToCssY(canvasY, dprY) {
-  if (dprY === undefined) {
-    var r = gChart.canvas.getBoundingClientRect();
-    dprY = gChart.canvas.height / r.height;
-  }
-  return canvasY / dprY;
-}
-
 /* ===== 根据 canvas 内部像素 X 找数据点索引 ===== */
 function getIndexAtCanvasX(canvasX) {
   var xs = gChart.scales.x;
@@ -337,18 +314,6 @@ function getIndexAtCanvasX(canvasX) {
     if (canvasX <= (p0 + p1) / 2) return i;
   }
   return n - 1;
-}
-
-/* 获取 canvas 的 DPR（内部像素 / CSS 像素），带容错 */
-function getCanvasDpr() {
-  try {
-    var cv = gChart.canvas;
-    var cssW = cv.clientWidth || cv.getBoundingClientRect().width;
-    if (!cssW) return 1;
-    var dpr = cv.width / cssW;
-    if (!dpr || !isFinite(dpr) || dpr <= 0) return 1;
-    return dpr;
-  } catch (e) { return 1; }
 }
 
 /* ===== 构建 dataset ===== */
