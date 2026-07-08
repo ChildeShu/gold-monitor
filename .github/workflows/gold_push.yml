@@ -81,7 +81,12 @@ jobs:
           import sys
           sys.path.insert(0, '.')
           from gold_monitor import generate_chart_html
-          generate_chart_html('/tmp/chart_output.html')
+          result = generate_chart_html('/tmp/chart_output.html')
+          if result:
+              print(f'CHART_GENERATED={result}')
+          else:
+              print('CHART_GENERATED=none')
+              sys.exit(1)
           "
           # 部署到 gh-pages（先丢弃工作区临时修改，避免 checkout 冲突）
           git reset --hard || true
@@ -93,12 +98,18 @@ jobs:
             git checkout --orphan gh-pages
             git rm -rf . 2>/dev/null || true
           fi
-          cp /tmp/index.html index.html
+          cp /tmp/chart_output.html index.html
           git add index.html
           if ! git diff --cached --quiet; then
             git commit -m "Update chart $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
-            git push origin gh-pages
-            echo "CHART_DEPLOYED=true" >> $GITHUB_ENV
+            for i in 1 2 3; do
+              if git push origin gh-pages; then
+                echo "CHART_DEPLOYED=true" >> $GITHUB_ENV
+                break
+              fi
+              echo "Push attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
           else
             echo "No chart changes"
           fi
