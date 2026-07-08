@@ -200,6 +200,80 @@ var gIsDown = false;
 var gRafId = null;
 var gPendingCssX = null;
 var gTabSwipeHandled = false;
+var gHighlightItems = [];  /* 供 canvas 插件绘制的高亮数据 */
+
+/* ===== Canvas 高亮插件：直接画圆点和标签（与数据线同坐标系，零DPR转换） ===== */
+var highlightOverlayPlugin = {
+  id: 'highlightOverlay',
+  afterDatasetsDraw: function(chart) {
+    if (!gHighlightItems || gHighlightItems.length === 0) return;
+    var ctx = chart.ctx;
+    var ca = chart.chartArea;
+    if (!ca) return;
+
+    ctx.save();
+    for (var i = 0; i < gHighlightItems.length; i++) {
+      var item = gHighlightItems[i];
+      /* 1. 画高亮圆点 —— pt.x/pt.y 就是数据点的精确位置 */
+      ctx.beginPath();
+      ctx.arc(item.ptX, item.ptY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = item.color;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      /* 2. 画价格标签 */
+      var text = item.value.toFixed(item.decimals) + " " + item.unit;
+      ctx.font = 'bold 11px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+      var tw = ctx.measureText(text).width + 24;  /* 左侧彩色圆点 + padding */
+      var th = 20;
+      var labelX = item.ptX + 10;
+      var labelY = item.ptY - th / 2;
+
+      /* 标签不超出 chartArea 右边界 */
+      if (labelX + tw > ca.right - 4) {
+        labelX = item.ptX - tw - 10;
+      }
+      if (labelX < ca.left + 4) labelX = ca.left + 4;
+      if (labelY < ca.top + 2) labelY = item.ptY + 8;
+      if (labelY + th > ca.bottom - 2) labelY = ca.bottom - th - 2;
+
+      /* 圆角背景 */
+      var r = 4;
+      ctx.beginPath();
+      ctx.moveTo(labelX + r, labelY);
+      ctx.lineTo(labelX + tw - r, labelY);
+      ctx.quadraticCurveTo(labelX + tw, labelY, labelX + tw, labelY + r);
+      ctx.lineTo(labelX + tw, labelY + th - r);
+      ctx.quadraticCurveTo(labelX + tw, labelY + th, labelX + tw - r, labelY + th);
+      ctx.lineTo(labelX + r, labelY + th);
+      ctx.quadraticCurveTo(labelX, labelY + th, labelX, labelY + th - r);
+      ctx.lineTo(labelX, labelY + r);
+      ctx.quadraticCurveTo(labelX, labelY, labelX + r, labelY);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(14,14,26,0.94)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      /* 标签内左侧彩色小圆点 */
+      ctx.beginPath();
+      ctx.arc(labelX + 10, labelY + th / 2, 3, 0, Math.PI * 2);
+      ctx.fillStyle = item.color;
+      ctx.fill();
+
+      /* 文字 */
+      ctx.fillStyle = item.color;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, labelX + 18, labelY + th / 2);
+    }
+    ctx.restore();
+  }
+};
+/* 注册全局插件（所有 chart 实例共享） */
+Chart.register(highlightOverlayPlugin);
 
 /* ===== 数据解析 ===== */
 function parseData() {
@@ -436,7 +510,7 @@ function toggleHighlight(key) {
   }
 }
 
-/* ===== 竖线 + 价格标签（clientWidth DPR法，兼容PC+手机） ===== */
+/* ===== 竖线 + 价格标签（Canvas 插件绘制，零坐标转换） ===== */
 
 function showCrosshair(cssX, idx) {
   try {
@@ -447,6 +521,7 @@ function showCrosshair(cssX, idx) {
     var offsetX = canvasEl.getBoundingClientRect().left - areaRect.left;
     var areaCssX = cssX + offsetX;
 
+    /* 竖线：HTML 覆盖层（X 坐标来自触摸/鼠标事件，天然准确） */
     gCrossLine.style.left = areaCssX + "px";
     gCrossLine.style.display = "block";
 
@@ -458,69 +533,36 @@ function showCrosshair(cssX, idx) {
       gClTime.style.display = "block";
     }
 
-    updatePriceTags(areaCssX, idx);
+    /* 收集数据点信息 -> 存入全局变量 -> 触发 Canvas 插件重绘 */
+    collectHighlightData(idx);
+    gChart.draw();
+    if (gTapHint) gTapHint.style.opacity = "0";
   } catch (err) {
     logError("showCrosshair", err);
   }
 }
 
 /*
- * updatePriceTags — clientWidth DPR 法
+ * collectHighlightData -- 只收集数据，不做任何坐标转换
  *
- * Chart.js meta.data[idx].x/y 是 canvas 内部物理像素。
- * 用 canvas.clientWidth / clientHeight 取 CSS 尺寸（比 getBoundingClientRect 更可靠，
- * 不受 border/transform/滚动条影响），计算实际 DPR：
- *   dprX = canvas.width  / canvas.clientWidth
- *   dprY = canvas.height / clientHeight
- * 这个 dpr 就是 Chart.js 内部使用的，在任何设备上都精确。
- *
- * 坐标转换：
- *   cssX = pt.x / dprX + offsetX   (offsetX = canvas在chartArea内的左偏移)
- *   cssY = pt.y / dprY + offsetY   (offsetY = canvas在chartArea内的上偏移)
+ * Chart.js meta.data[idx].x/y 是 canvas 内部像素坐标，
+ * 与数据线渲染用的是同一套坐标系。直接传给 Canvas 插件使用。
  */
-function updatePriceTags(areaCssX, idx) {
+function collectHighlightData(idx) {
   try {
-    if (!gChart || !gChartArea || !gParsedData) return;
-    var ca = gChart.chartArea;
-    if (!ca) return;
-
+    if (!gChart || !gParsedData) return;
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
 
-    /* 清理旧元素 */
-    var existing = {};
+    /* 清理旧的 HTML 标签（兼容旧逻辑） */
     var oldTags = gChartArea.querySelectorAll(".price-tag");
-    [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
-    var existingDots = {};
+    [].forEach.call(oldTags, function(el){ el.remove(); });
     var oldDots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
+    [].forEach.call(oldDots, function(el){ el.remove(); });
 
-    /*
-     * 用 clientWidth/clientHeight 获取 canvas 的 CSS 渲染尺寸。
-     * 这是最可靠的——它就是浏览器实际渲染的像素数，
-     * 与 Chart.js 设置 canvas.width/canvas.height 时用的基准一致。
-     */
-    var cv = gChart.canvas;
-    var cssW = cv.clientWidth;   /* canvas CSS 宽度 */
-    var cssH = cv.clientHeight;  /* canvas CSS 高度 */
-    if (cssW <= 0 || cssH <= 0) return;
-
-    var dprX = cv.width / cssW;   /* 实际使用的水平 DPR */
-    var dprY = cv.height / cssH;   /* 实际使用的垂直 DPR */
-
-    /* canvas 在 chartArea 内的偏移（CSS 像素） */
-    var cr = cv.getBoundingClientRect();
-    var ar = gChartArea.getBoundingClientRect();
-    var cOffX = cr.left - ar.left;
-    var cOffY = cr.top - ar.top;
-
-    var areaW = gChartArea.offsetWidth;
-    var areaH = gChartArea.offsetHeight;
-    if (areaW <= 0 || areaH <= 0) return;
-
-    /* 收集所有可见 series 的数据点信息 */
-    var items = [];
+    /* 重新收集 */
+    gHighlightItems = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
       var dsIdx = dsIndexMap[s.key];
@@ -533,162 +575,54 @@ function updatePriceTags(areaCssX, idx) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* canvas 物理像素 → CSS 像素 → chartArea 坐标系 */
-      var x = pt.x / dprX + cOffX;
-      var y = pt.y / dprY + cOffY;
-
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
+      /* 直接存储 Canvas 坐标和显示数据，零转换 */
+      gHighlightItems.push({
+        key: s.key,
+        color: s.color,
+        value: v,
+        decimals: s.decimals,
+        unit: s.unit,
+        ptX: pt.x,
+        ptY: pt.y
+      });
     }
 
-    if (items.length === 0) return;
-
-    /* 按 Y 从小到大排序 */
-    items.sort(function(a, b){ return a.y - b.y; });
-
-    var DOT_R = 4;
-    var MARGIN = 6;
-    var TAG_SPACING = 2;
-
-    /* 先创建所有标签获取真实尺寸 */
-    var rawTags = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var tag = existing[it.key];
-      if (tag) {
-        delete existing[it.key];
-      } else {
-        tag = document.createElement("div");
-        tag.className = "price-tag";
-        tag.dataset.key = it.key;
-        gChartArea.appendChild(tag);
-      }
-      tag.innerHTML = '<span class="pt-dot" style="background:' + it.color + '"></span><span class="pt-text" style="color:' + it.color + '">' + it.value.toFixed(it.decimals) + " " + it.unit + '</span>';
-      tag.style.display = "flex";
-      tag.style.visibility = "hidden";
-      tag.style.left = "0px"; tag.style.top = "0px";
-      tag.style.transform = "none";
-      rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
-    }
-
-    /* 左右偏好 */
-    var maxTw = 0;
-    for (var i = 0; i < rawTags.length; i++) { if (rawTags[i].w > maxTw) maxTw = rawTags[i].w; }
-    var rightSpace = areaW - (items[items.length - 1].x + DOT_R);
-    var preferRight = (rightSpace >= maxTw + MARGIN);
-
-    /* 初始位置：每个标签紧贴自己的圆点 */
-    var placements = [];
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var rt = rawTags[i];
-      var tw = rt.w;
-      var th = rt.h;
-
-      var tagLeft = it.x + DOT_R + 2;
-      var tagTop = it.y + DOT_R + 2;
-
-      if (tagLeft + tw > areaW - MARGIN) {
-        tagLeft = it.x - DOT_R - tw - 2;
-      }
-
-      placements.push({left: tagLeft, top: tagTop, w: tw, h: th});
-    }
-
-    /* 碰撞检测：从上往下逐对检查，有碰撞就向下推 */
-    for (var i = 0; i < placements.length; i++) {
-      for (var j = i + 1; j < placements.length; j++) {
-        var a = placements[i];
-        var b = placements[j];
-
-        var overlapX = !(a.left + a.w + TAG_SPACING < b.left || b.left + b.w + TAG_SPACING < a.left);
-        var overlapY = !(a.top + a.h + TAG_SPACING < b.top || b.top + b.h + TAG_SPACING < a.top);
-
-        if (overlapX && overlapY) {
-          b.top = a.top + a.h + TAG_SPACING;
-        }
-      }
-    }
-
-    /* 应用位置 + 边界钳制 */
-    for (var i = 0; i < items.length; i++) {
-      var it = items[i];
-      var rt = rawTags[i];
-      var pl = placements[i];
-
-      var dot = existingDots[it.key];
-      if (dot) { delete existingDots[it.key]; }
-      else {
-        dot = document.createElement("div");
-        dot.className = "highlight-dot"; dot.dataset.key = it.key;
-        gChartArea.appendChild(dot);
-      }
-      dot.style.backgroundColor = it.color;
-      /* 圆点 X = 竖线 X 坐标（已验证准确），不使用 DPR 换算的 it.x */
-      var dotX = areaCssX - DOT_R;  /* 居中到竖线上 */
-      var dotY = it.y - DOT_R;
-      /* 边界钳制 */
-      dot.style.left = Math.max(MARGIN, Math.min(dotX, areaW - MARGIN - DOT_R * 2)) + "px";
-      dot.style.top = Math.max(MARGIN, Math.min(dotY, areaH - MARGIN - DOT_R * 2)) + "px";
-      dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
-
-      /* 标签边界保护 */
-      var fTop = pl.top;
-      var fLeft = pl.left;
-      if (fLeft < MARGIN) fLeft = MARGIN;
-      if (fLeft + pl.w > areaW - MARGIN) fLeft = areaW - MARGIN - pl.w;
-      if (fTop < MARGIN) fTop = it.y + DOT_R + 2;
-      if (fTop + pl.h > areaH - MARGIN) fTop = areaH - MARGIN - pl.h;
-
-      rt.tag.style.visibility = "visible";
-      rt.tag.style.left = Math.round(fLeft) + "px";
-      rt.tag.style.top = Math.round(fTop) + "px";
-    }
-
-    /* 移除多余旧元素 */
-    Object.keys(existing).forEach(function(k){ try{existing[k].remove();}catch(_){} });
-    Object.keys(existingDots).forEach(function(k){ try{existingDots[k].remove();}catch(_){} });
+    /* 按 Y 排序（插件按顺序绘制，从上到下） */
+    gHighlightItems.sort(function(a, b){ return a.ptY - b.ptY; });
   } catch (err) {
-    logError("updatePriceTags", err);
+    logError("collectHighlightData", err);
   }
 }
+
 
 function moveCrosshairOnly(cssX) {
   try {
     if (!gChartArea || !gCrossLine || !gChart) return;
     var canvasEl = gChart.canvas;
-    var canvasRect = canvasEl.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasRect.left - areaRect.left;
-
-    /* 竖线：cssX 是相对于 canvas 的，需要加偏移 */
+    var offsetX = canvasEl.getBoundingClientRect().left - areaRect.left;
     gCrossLine.style.left = (cssX + offsetX) + "px";
-
-    /* 标签跟随竖线，保持左右侧策略；圆点保持在数据点位置不随竖线平移 */
-    var tags = gChartArea.querySelectorAll(".price-tag");
-    var areaW = areaRect.width;
-    [].forEach.call(tags, function(el){
-      var tw = el.offsetWidth || 80;
-      var newLeft = cssX + offsetX + 10;
-      if (newLeft + tw + 4 > areaW && cssX + offsetX - tw - 10 >= 0) {
-        newLeft = cssX + offsetX - tw - 10;
-      }
-      el.style.left = newLeft + "px";
-    });
   } catch (err) {
     logError("moveCrosshairOnly", err);
   }
 }
 
+
 function removeCrosshairDetails() {
   try {
+    /* 清除 HTML 标签（兼容） */
     var tags = gChartArea.querySelectorAll(".price-tag");
     [].forEach.call(tags, function(el){ el.remove(); });
     var dots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(dots, function(el){ el.remove(); });
+    /* 清除 Canvas 插件数据 */
+    gHighlightItems = [];
+    if (gChart) gChart.draw();
   } catch (err) {
     logError("removeCrosshairDetails", err);
   }
 }
+
 
 /* ===== Tab 栏左右滑动切换 ===== */
 function bindTabSwipe() {
