@@ -809,7 +809,19 @@ def deploy_chart_to_gh_pages(html_path):
     if not html_file.exists():
         print(f"  [部署] 文件不存在: {html_path}")
         return None
-    
+
+    # 防御：生成文件可能位于仓库内且曾被 gh-pages 跟踪，
+    # 后续的 `git checkout gh-pages` 会把它覆盖成陈旧版本，
+    # 导致部署出去的永远是旧图表。先复制到仓库外的临时文件，
+    # 分支切换后再用它覆盖 index.html。
+    import tempfile as _tempfile
+    import shutil as _shutil
+    _tmpf = _tempfile.NamedTemporaryFile(delete=False, suffix=".html", prefix="chart_deploy_")
+    _tmpf.close()
+    _shutil.copy(html_file, _tmpf.name)
+    html_file = Path(_tmpf.name)
+    _html_tmp = str(_tmpf.name)
+
     repo_dir = str(SCRIPT_DIR)
     
     # 获取 GitHub 仓库信息
@@ -870,6 +882,11 @@ def deploy_chart_to_gh_pages(html_path):
     import shutil
     target = Path(repo_dir) / "index.html"
     shutil.copy(html_file, target)
+    # 清理临时文件
+    try:
+        os.unlink(_html_tmp)
+    except Exception:
+        pass
     
     # 复制辅助资源文件（已存在于 gh-pages 时 src==dst，跳过以免 SameFileError）
     for res in ["chart.umd.min.js", "latest.json"]:
