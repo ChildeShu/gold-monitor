@@ -1,10 +1,10 @@
 {
-  "2026-07-09 05:00": {
+  "2026-07-09 06:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4078.08,
+      "intl_price": 4077.52,
       "intl_unit": "美元/盎司",
-      "cny_price": 891.1641,
+      "cny_price": 891.7103,
       "update_time": "2026-07-08 20:00:00",
       "prev_close": null
     },
