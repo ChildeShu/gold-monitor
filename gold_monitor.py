@@ -871,11 +871,12 @@ def deploy_chart_to_gh_pages(html_path):
     target = Path(repo_dir) / "index.html"
     shutil.copy(html_file, target)
     
-    # 复制辅助资源文件
+    # 复制辅助资源文件（已存在于 gh-pages 时 src==dst，跳过以免 SameFileError）
     for res in ["chart.umd.min.js", "latest.json"]:
         src = Path(repo_dir) / res
-        if src.exists():
-            shutil.copy(src, Path(repo_dir) / res)
+        dst = Path(repo_dir) / res
+        if src.exists() and src.resolve() != dst.resolve():
+            shutil.copy(src, dst)
     
     # 提交
     subprocess.run(
