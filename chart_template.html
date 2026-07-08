@@ -147,78 +147,149 @@ var gCrossActive = false;  /* 竖线是否激活 */
 var gCrossX = null;        /* 竖线 X（canvas 内部像素） */
 var gCrossTimeText = "";   /* 底部时间文本 */
 
-/* ===== Canvas 高亮插件：直接画竖线 + 圆点 + 价格标签（全部在 canvas 内部像素空间，零坐标换算） ===== */
-var highlightOverlayPlugin = {
-  id: 'highlightOverlay',
-  afterDatasetsDraw: function(chart) {
-    if (!gCrossActive) return;
-    var ctx = chart.ctx;
-    var ca = chart.chartArea;
+/* ===== 滑动高亮覆盖层：独立 canvas，只在滑动时重绘这一层（不触发整图重绘），保证丝滑 ===== */
+var gOverlay = null;
+var gOverlayCtx = null;
+
+function ensureOverlay() {
+  try {
+    if (!gChart) return false;
+    var base = gChart.canvas;
+    var rect = base.getBoundingClientRect ? base.getBoundingClientRect() : null;
+    var cssW = base.clientWidth || (rect ? rect.width : 0);
+    var cssH = base.clientHeight || (rect ? rect.height : 0);
+    if (!cssW || !cssH) return false;
+    var dpr = window.devicePixelRatio || 1;
+    if (!gOverlay) {
+      gOverlay = document.createElement("canvas");
+      gOverlay.id = "crosshairOverlay";
+      gOverlay.style.position = "absolute";
+      gOverlay.style.top = "0";
+      gOverlay.style.left = "0";
+      gOverlay.style.pointerEvents = "none";
+      gOverlay.style.zIndex = "4";
+      if (base.parentNode) base.parentNode.appendChild(gOverlay);
+      gOverlayCtx = gOverlay.getContext("2d");
+    }
+    var bw = Math.round(cssW * dpr);
+    var bh = Math.round(cssH * dpr);
+    if (gOverlay.width !== bw || gOverlay.height !== bh) {
+      gOverlay.width = bw;
+      gOverlay.height = bh;
+      gOverlay.style.width = cssW + "px";
+      gOverlay.style.height = cssH + "px";
+    }
+    /* 主图已按 dpr 预缩放，覆盖层用同样变换，绘制坐标用 CSS(逻辑)像素 */
+    gOverlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return true;
+  } catch (err) { logError("ensureOverlay", err); return false; }
+}
+
+/* 竖直标签防重叠布局：items 已按 ptY 升序，返回每个标签的 top（CSS 像素） */
+function layoutLabels(items, ca, lh, minGap) {
+  var n = items.length;
+  if (n === 0) return [];
+  var tops = new Array(n);
+  for (var i = 0; i < n; i++) tops[i] = items[i].ptY - lh / 2;
+  /* 向下推开，避免与上一个重叠 */
+  for (var i = 1; i < n; i++) {
+    if (tops[i] < tops[i - 1] + lh + minGap) tops[i] = tops[i - 1] + lh + minGap;
+  }
+  /* 若超出底部，整体上移 */
+  var overflow = (tops[n - 1] + lh) - (ca.bottom - 2);
+  if (overflow > 0) {
+    for (var j = 0; j < n; j++) tops[j] -= overflow;
+  }
+  /* 若顶部超出，整体下移并重新向下推开 */
+  if (tops[0] < ca.top + 2) {
+    var shift = (ca.top + 2) - tops[0];
+    for (var k = 0; k < n; k++) tops[k] += shift;
+    for (var m = 1; m < n; m++) {
+      if (tops[m] < tops[m - 1] + lh + minGap) tops[m] = tops[m - 1] + lh + minGap;
+    }
+  }
+  return tops;
+}
+
+function drawOverlay() {
+  try {
+    if (!gChart || !gChart.chartArea) return;
+    if (!gCrossActive) { clearOverlay(); return; }
+    if (!ensureOverlay()) return;
+    var ctx = gOverlayCtx;
+    var ca = gChart.chartArea;
     if (!ca) return;
 
-    var crossX = gCrossX;  /* canvas 内部像素 X（竖线位置） */
-    if (typeof crossX !== "number") return;
-
-    /* 1. 竖线（金色虚线，全高） */
+    /* 清空（用设备像素，避免残留） */
     ctx.save();
-    ctx.beginPath();
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(212,175,55,0.85)";
-    ctx.moveTo(crossX, ca.top);
-    ctx.lineTo(crossX, ca.bottom);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, gOverlay.width, gOverlay.height);
+    ctx.restore();
 
-    /* 2. 时间标签（绘制在图表区内部底部，避免被像素比缩放裁切） */
-    if (gCrossTimeText) {
-      ctx.font = 'bold 10px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
-      var tw = ctx.measureText(gCrossTimeText).width + 14;
-      var th = 16;
-      var bx = crossX - tw / 2;
-      if (bx < ca.left + 2) bx = ca.left + 2;
-      if (bx + tw > ca.right - 2) bx = ca.right - tw - 2;
-      var by = ca.bottom - th - 4;
-      if (by < ca.top + 2) by = ca.top + 2;
-      ctx.fillStyle = "rgba(212,175,55,0.95)";
-      roundRect(ctx, bx, by, tw, th, 4);
-      ctx.fill();
-      ctx.fillStyle = "#0e0e1a";
-      ctx.textBaseline = "middle";
-      ctx.textAlign = "center";
-      ctx.fillText(gCrossTimeText, bx + tw / 2, by + th / 2);
-      ctx.textAlign = "left";
+    var crossX = gCrossX;
+    if (typeof crossX === "number") {
+      /* 竖线（金色虚线，全高） */
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(212,175,55,0.85)";
+      ctx.moveTo(crossX, ca.top);
+      ctx.lineTo(crossX, ca.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      /* 时间标签（绘制在图表区内部底部，避免被像素比缩放裁切） */
+      if (gCrossTimeText) {
+        ctx.font = 'bold 10px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+        var tw = ctx.measureText(gCrossTimeText).width + 14;
+        var th = 16;
+        var bx = crossX - tw / 2;
+        if (bx < ca.left + 2) bx = ca.left + 2;
+        if (bx + tw > ca.right - 2) bx = ca.right - tw - 2;
+        var by = ca.bottom - th - 4;
+        if (by < ca.top + 2) by = ca.top + 2;
+        ctx.fillStyle = "rgba(212,175,55,0.95)";
+        roundRect(ctx, bx, by, tw, th, 4);
+        ctx.fill();
+        ctx.fillStyle = "#0e0e1a";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+        ctx.fillText(gCrossTimeText, bx + tw / 2, by + th / 2);
+        ctx.textAlign = "left";
+      }
     }
 
-    /* 3. 每个数据系列的圆点 + 价格标签 */
+    /* 圆点 + 价格标签（防重叠） */
     if (gHighlightItems && gHighlightItems.length > 0) {
-      for (var i = 0; i < gHighlightItems.length; i++) {
-        var item = gHighlightItems[i];
-        /* 圆点 */
+      var lh = 20, minGap = 2;
+      var items = gHighlightItems.slice().sort(function(a, b) { return a.ptY - b.ptY; });
+      var tops = layoutLabels(items, ca, lh, minGap);
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var labelY = tops[i];
+
+        /* 圆点（画在原始数据点位置） */
         ctx.beginPath();
         ctx.arc(item.ptX, item.ptY, 5, 0, Math.PI * 2);
         ctx.fillStyle = item.color;
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = "#ffffff";
         ctx.stroke();
 
-        /* 价格标签 */
         var text = item.value.toFixed(item.decimals) + " " + item.unit;
         ctx.font = 'bold 11px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
         ctx.textAlign = "left";
         var lw = ctx.measureText(text).width + 24;
-        var lh = 20;
         var labelX = item.ptX + 10;
-        var labelY = item.ptY - lh / 2;
-
         if (labelX + lw > ca.right - 4) labelX = item.ptX - lw - 10;
         if (labelX < ca.left + 4) labelX = ca.left + 4;
-        if (labelY < ca.top + 2) labelY = item.ptY + 8;
-        if (labelY + lh > ca.bottom - 2) labelY = ca.bottom - lh - 2;
 
-        var r = 4;
+        /* 标签框 */
         ctx.beginPath();
+        var r = 4;
         ctx.moveTo(labelX + r, labelY);
         ctx.lineTo(labelX + lw - r, labelY);
         ctx.quadraticCurveTo(labelX + lw, labelY, labelX + lw, labelY + r);
@@ -229,25 +300,37 @@ var highlightOverlayPlugin = {
         ctx.lineTo(labelX, labelY + r);
         ctx.quadraticCurveTo(labelX, labelY, labelX + r, labelY);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(14,14,26,0.94)';
+        ctx.fillStyle = "rgba(14,14,26,0.94)";
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
         ctx.lineWidth = 1;
         ctx.stroke();
 
+        /* 标签内色点 */
         ctx.beginPath();
         ctx.arc(labelX + 10, labelY + lh / 2, 3, 0, Math.PI * 2);
         ctx.fillStyle = item.color;
         ctx.fill();
 
+        /* 标签文字 */
         ctx.fillStyle = item.color;
-        ctx.textBaseline = 'middle';
+        ctx.textBaseline = "middle";
         ctx.fillText(text, labelX + 18, labelY + lh / 2);
       }
     }
-    ctx.restore();
-  }
-};
+    ctx.textAlign = "left";
+  } catch (err) { logError("drawOverlay", err); }
+}
+
+function clearOverlay() {
+  try {
+    if (!gOverlay || !gOverlayCtx) return;
+    gOverlayCtx.save();
+    gOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    gOverlayCtx.clearRect(0, 0, gOverlay.width, gOverlay.height);
+    gOverlayCtx.restore();
+  } catch (err) { logError("clearOverlay", err); }
+}
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.moveTo(x + r, y);
@@ -261,8 +344,15 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
-/* 注册全局插件（所有 chart 实例共享） */
-Chart.register(highlightOverlayPlugin);
+
+/* 图表自身重绘后，若高亮仍激活则同步覆盖层（处理 resize / 切 tab） */
+var overlaySyncPlugin = {
+  id: "overlaySync",
+  afterDraw: function() {
+    try { if (gCrossActive) drawOverlay(); } catch (e) {}
+  }
+};
+Chart.register(overlaySyncPlugin);
 
 /* ===== 数据解析 ===== */
 function parseData() {
@@ -505,9 +595,9 @@ function showCrosshair(canvasX, idx) {
       gCrossTimeText = "";
     }
 
-    /* 收集圆点数据 -> 触发 Canvas 插件重绘 */
+    /* 收集圆点数据 -> 只重绘覆盖层（不重绘整图，丝滑） */
     collectHighlightData(idx);
-    gChart.draw();
+    drawOverlay();
     if (gTapHint) gTapHint.style.opacity = "0";
   } catch (err) {
     logError("showCrosshair", err);
@@ -579,7 +669,7 @@ function moveCrosshairOnly(canvasX) {
       ? xScale.getPixelForValue(gLastCrossIdx) : canvasX;
     snapX = Math.max(ca.left, Math.min(snapX, ca.right));
     gCrossX = snapX;
-    gChart.draw();
+    drawOverlay();
   } catch (err) {
     logError("moveCrosshairOnly", err);
   }
@@ -592,7 +682,7 @@ function removeCrosshairDetails() {
     gCrossX = null;
     gCrossTimeText = "";
     gHighlightItems = [];
-    if (gChart) gChart.draw();
+    clearOverlay();
   } catch (err) {
     logError("removeCrosshairDetails", err);
   }

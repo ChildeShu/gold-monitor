@@ -1,0 +1,105 @@
+name: 金价数据采集(每10分钟)
+
+on:
+  schedule:
+    # 北京时间交易日 9:00-15:00 每 10 分钟采集一次（UTC 1:00-7:00，周一到周五）
+    # 分钟取 5,15,...,55，避开整点(:00)，以免与「金价每小时播报」工作流同时推送 gh-pages 造成冲突
+    - cron: "5-59/10 1-7 * * 1-5"
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 生成配置文件(采集用，无需推送密钥)
+        run: |
+          python -c "
+          import json
+          config = {
+              'selected_brands': ['周大福', '老庙黄金', '周六福'],
+              'threshold': 0.05,
+              'trading_hours': {'start':'09:00','end':'15:00','weekdays_only':True},
+          }
+          json.dump(config, open('config.json','w'), ensure_ascii=False, indent=2)
+          print('config.json 生成成功')
+          "
+
+      - name: 恢复历史数据缓存
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: gold-history-${{ github.run_id }}
+          restore-keys: |
+            gold-history-
+
+      - name: 采集金价（每10分钟，仅保存不推送）
+        run: python gold_monitor.py --save-only
+        env:
+          TZ: Asia/Shanghai
+
+      - name: 部署走势图到 GitHub Pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from gold_monitor import generate_chart_html
+          result = generate_chart_html('/tmp/chart_output.html')
+          if result:
+              print(f'CHART_GENERATED={result}')
+          else:
+              print('CHART_GENERATED=none')
+              sys.exit(1)
+          "
+          cp latest.json /tmp/latest_snapshot.json 2>/dev/null || true
+          git reset --hard || true
+          git fetch origin gh-pages 2>/dev/null || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout -f gh-pages
+            git pull origin gh-pages 2>/dev/null || true
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . 2>/dev/null || true
+          fi
+          cp /tmp/chart_output.html index.html
+          cp /tmp/latest_snapshot.json latest.json 2>/dev/null || true
+          : > .nojekyll
+          git add index.html latest.json .nojekyll
+          if ! git diff --cached --quiet; then
+            git commit -m "Update chart $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+            for i in 1 2 3; do
+              if git push origin gh-pages; then
+                echo "CHART_DEPLOYED=true" >> $GITHUB_ENV
+                break
+              fi
+              echo "Push attempt $i failed, retrying in 10s..."
+              sleep 10
+            done
+          else
+            echo "No chart changes"
+          fi
+        env:
+          TZ: Asia/Shanghai
+
+      - name: 更新历史数据缓存
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: gold-history-${{ github.run_id }}
