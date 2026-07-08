@@ -51,11 +51,12 @@ body{
 .chart-area{position:absolute;top:0;left:0;right:0;bottom:0;touch-action:none}
 canvas#chart{width:100%!important;height:100%!important;display:block;touch-action:none}
 
-/* ===== 竖线（金色虚线 + 底部时间标签）===== */
+/* ===== 竖线（支付宝风格：金色虚线 + 顶部圆点价格气泡 + 底部时间标签）===== */
 .cross-line{
   position:absolute;top:0;bottom:0;width:0;left:0;
   pointer-events:none;display:none;z-index:20;
 }
+/* 虚线竖线 */
 .cross-line .cl-dash{
   position:absolute;left:50%;top:0;bottom:0;
   width:1px;
@@ -68,6 +69,27 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
   );
   transform:translateX(-50%);
 }
+/* 左上角：多价格气泡（支付宝风格） */
+.chart-area .cl-top{
+  position:absolute;left:10px;top:10px;
+  display:none;align-items:flex-start;
+  pointer-events:none;z-index:22;
+}
+.chart-area .cl-price{
+  display:flex;flex-direction:column;gap:6px;
+  background:rgba(14,14,26,0.95);
+  border:1px solid rgba(255,255,255,0.12);
+  padding:7px 10px;border-radius:10px;
+  box-shadow:0 2px 10px rgba(0,0,0,0.4);
+  font-variant-numeric:tabular-nums;
+  min-width:100px;
+}
+.cl-price-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:11px;font-weight:600;white-space:nowrap;
+}
+.cl-price-row .r-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.cl-price-row .r-text{font-weight:700;text-align:right}
 /* 底部时间 */
 .cross-line .cl-time{
   position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
@@ -78,31 +100,35 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
   pointer-events:none;
 }
 
-/* 竖线旁价格标签：挨着数据点，放在数据点下方优先 */
+/* 竖线旁价格标签（深色气泡 + 彩色圆点/文字，中心对齐数据点） */
 .price-tag{
   position:absolute;left:0;top:0;
   display:flex;align-items:center;gap:4px;
-  padding:2px 6px;border-radius:4px;
-  font-size:11px;font-weight:700;
-  background:rgba(14,14,26,0.94);
-  border:1px solid rgba(255,255,255,0.15);
+  padding:1px 5px;border-radius:4px;
+  font-size:10px;font-weight:600;
+  background:rgba(14,14,26,0.92);
+  border:1px solid rgba(255,255,255,0.12);
   color:#fff;
   pointer-events:none;
-  box-shadow:0 1px 6px rgba(0,0,0,0.5);
+  box-shadow:0 1px 5px rgba(0,0,0,0.4);
   font-variant-numeric:tabular-nums;z-index:21;
+  will-change:left,top;
+  transform:translateY(-50%);
+  transition:left 0.12s ease-out, top 0.12s ease-out;
   white-space:nowrap;
 }
-.price-tag .pt-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.price-tag .pt-text{font-weight:700;font-variant-numeric:tabular-nums}
+.price-tag .pt-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.price-tag .pt-text{font-weight:700}
 
 /* 高亮圆点：标记竖线与数据线的实际交点 */
 .highlight-dot{
   position:absolute;left:0;top:0;
   width:8px;height:8px;border-radius:50%;
   border:2px solid #fff;
-  box-shadow:0 0 0 2px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.5);
+  box-shadow:0 0 0 2px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.4);
   pointer-events:none;z-index:21;
-  /* 不用 transform，直接用 left/top 定位圆心 */
+  transform:translate(-50%, -50%);
+  transition:left 0.12s ease-out, top 0.12s ease-out;
 }
 
 .legend-bar{
@@ -141,7 +167,13 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
 <div class="chart-stage">
   <div class="chart-area" id="chartArea">
     <canvas id="chart"></canvas>
-    <canvas id="crossOverlay" style="position:absolute;top:0;left:0;pointer-events:none;z-index:15"></canvas>
+    <div class="cross-line" id="crossLine">
+      <div class="cl-dash"></div>
+      <div class="cl-time" id="clTime"></div>
+    </div>
+    <div class="cl-top" id="clTop">
+      <div class="cl-price" id="clPrice"></div>
+    </div>
     <div class="tap-hint" id="tapHint">← 在图表上滑动查看 →<br><span id="errorBox" style="color:#ff6b6b;display:none"></span></div>
   </div>
 </div>
@@ -714,1529 +746,9 @@ var RAW_DATA = {
       "周生生": 1213.0,
       "周大福": 1208.0
     }
-  },
-  "2026-07-02 09:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4050.98,
-      "intl_unit": "美元/盎司",
-      "cny_price": 884.6483,
-      "update_time": "2026-07-01 20:00:00",
-      "prev_close": 4031.29
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.397,
-      "prev_close": 8.255,
-      "change": 0.14199999999999946,
-      "change_rate": 1.7201695941853354
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.397,
-        "gold_price": 839.7,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.14199999999999946,
-        "change_rate": 1.7201695941853354
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.418,
-        "gold_price": 841.8,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.14699999999999847,
-        "change_rate": 1.7772941603191688
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.792,
-        "gold_price": 879.2,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.15000000000000036,
-        "change_rate": 1.7357093265447856
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.823,
-        "gold_price": 882.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.15300000000000047,
-        "change_rate": 1.7647058823529467
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.397,
-        "gold_price": 839.7,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.14199999999999946,
-        "change_rate": 1.7201695941853354
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 09:54": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4053.53,
-      "intl_unit": "美元/盎司",
-      "cny_price": 884.6483,
-      "update_time": "2026-07-01 20:00:00",
-      "prev_close": 4031.29
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.403,
-      "prev_close": 8.255,
-      "change": 0.1479999999999997,
-      "change_rate": 1.7928528164748598
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.403,
-        "gold_price": 840.3,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1479999999999997,
-        "change_rate": 1.7928528164748598
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.422,
-        "gold_price": 842.2,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1509999999999998,
-        "change_rate": 1.8256559061782105
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.797,
-        "gold_price": 879.7,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.15500000000000114,
-        "change_rate": 1.7935663040962873
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.16000000000000014,
-        "change_rate": 1.8454440599769337
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.403,
-        "gold_price": 840.3,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1479999999999997,
-        "change_rate": 1.7928528164748598
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 10:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4055.06,
-      "intl_unit": "美元/盎司",
-      "cny_price": 885.7295,
-      "update_time": "2026-07-01 20:00:00",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.404,
-      "prev_close": 8.255,
-      "change": 0.14899999999999913,
-      "change_rate": 1.80496668685644
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.404,
-        "gold_price": 840.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.14899999999999913,
-        "change_rate": 1.80496668685644
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.425,
-        "gold_price": 842.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.15399999999999991,
-        "change_rate": 1.861927215572481
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.799,
-        "gold_price": 879.9,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.15700000000000003,
-        "change_rate": 1.8167090951168716
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.16000000000000014,
-        "change_rate": 1.8454440599769337
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.404,
-        "gold_price": 840.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.14899999999999913,
-        "change_rate": 1.80496668685644
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 10:45": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4056.53,
-      "intl_unit": "美元/盎司",
-      "cny_price": 885.7295,
-      "update_time": "2026-07-01 20:00:00",
-      "prev_close": 4031.29
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.411,
-      "prev_close": 8.255,
-      "change": 0.1559999999999988,
-      "change_rate": 1.8897637795275444
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.411,
-        "gold_price": 841.1,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1559999999999988,
-        "change_rate": 1.8897637795275444
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1609999999999996,
-        "change_rate": 1.9465602708257714
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.804,
-        "gold_price": 880.4,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.1620000000000008,
-        "change_rate": 1.874566072668373
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.837,
-        "gold_price": 883.7,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.16699999999999982,
-        "change_rate": 1.9261822376009208
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.411,
-        "gold_price": 841.1,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1559999999999988,
-        "change_rate": 1.8897637795275444
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 11:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4058.05,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.3826,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.432,
-      "prev_close": 8.255,
-      "change": 0.1769999999999996,
-      "change_rate": 2.144155057540879
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.45,
-        "gold_price": 845.0,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1789999999999985,
-        "change_rate": 2.164188127191373
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.1880000000000006,
-        "change_rate": 2.175422355936133
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.858,
-        "gold_price": 885.8,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.1880000000000006,
-        "change_rate": 2.168396770472902
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 11:42": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4058.05,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.3826,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.432,
-      "prev_close": 8.255,
-      "change": 0.1769999999999996,
-      "change_rate": 2.144155057540879
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.45,
-        "gold_price": 845.0,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1789999999999985,
-        "change_rate": 2.164188127191373
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.1880000000000006,
-        "change_rate": 2.175422355936133
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.858,
-        "gold_price": 885.8,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.1880000000000006,
-        "change_rate": 2.168396770472902
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 12:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4072.13,
-      "intl_unit": "美元/盎司",
-      "cny_price": 888.3452,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.432,
-      "prev_close": 8.255,
-      "change": 0.1769999999999996,
-      "change_rate": 2.144155057540879
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.45,
-        "gold_price": 845.0,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1789999999999985,
-        "change_rate": 2.164188127191373
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.1880000000000006,
-        "change_rate": 2.175422355936133
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.858,
-        "gold_price": 885.8,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.1880000000000006,
-        "change_rate": 2.168396770472902
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 12:39": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4072.13,
-      "intl_unit": "美元/盎司",
-      "cny_price": 888.3452,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.432,
-      "prev_close": 8.255,
-      "change": 0.1769999999999996,
-      "change_rate": 2.144155057540879
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.45,
-        "gold_price": 845.0,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1789999999999985,
-        "change_rate": 2.164188127191373
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.83,
-        "gold_price": 883.0,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.1880000000000006,
-        "change_rate": 2.175422355936133
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.858,
-        "gold_price": 885.8,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.1880000000000006,
-        "change_rate": 2.168396770472902
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.432,
-        "gold_price": 843.2,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.1769999999999996,
-        "change_rate": 2.144155057540879
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 13:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4063.74,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.5149,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.418,
-      "prev_close": 8.255,
-      "change": 0.16299999999999848,
-      "change_rate": 1.974560872198649
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.418,
-        "gold_price": 841.8,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.16299999999999848,
-        "change_rate": 1.974560872198649
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.437,
-        "gold_price": 843.7,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.1659999999999986,
-        "change_rate": 2.0070124531495415
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.813,
-        "gold_price": 881.3,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.17100000000000115,
-        "change_rate": 1.978708632261064
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.845,
-        "gold_price": 884.5,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.1750000000000007,
-        "change_rate": 2.0184544405997777
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.418,
-        "gold_price": 841.8,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.16299999999999848,
-        "change_rate": 1.974560872198649
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 13:35": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4063.74,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.5149,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.409,
-      "prev_close": 8.255,
-      "change": 0.15399999999999991,
-      "change_rate": 1.865536038764384
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.409,
-        "gold_price": 840.9,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.15399999999999991,
-        "change_rate": 1.865536038764384
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.431,
-        "gold_price": 843.1,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.15999999999999837,
-        "change_rate": 1.9344698343610005
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.805,
-        "gold_price": 880.5,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.16300000000000026,
-        "change_rate": 1.8861374681786656
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.839,
-        "gold_price": 883.9,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.16900000000000048,
-        "change_rate": 1.9492502883506397
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.409,
-        "gold_price": 840.9,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.15399999999999991,
-        "change_rate": 1.865536038764384
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 14:00": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4078.11,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.6023,
-      "update_time": "2026-07-02 10:34:40",
-      "prev_close": 4031.29
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.459,
-      "prev_close": 8.255,
-      "change": 0.20399999999999885,
-      "change_rate": 2.4712295578437167
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.459,
-        "gold_price": 845.9,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.20399999999999885,
-        "change_rate": 2.4712295578437167
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.48,
-        "gold_price": 848.0,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20899999999999963,
-        "change_rate": 2.5269012211340782
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.858,
-        "gold_price": 885.8,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.21600000000000108,
-        "change_rate": 2.4994214302244977
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.889,
-        "gold_price": 888.9,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.21899999999999942,
-        "change_rate": 2.525951557093419
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.459,
-        "gold_price": 845.9,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.20399999999999885,
-        "change_rate": 2.4712295578437167
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 16:23": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4064.99,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.6699,
-      "update_time": "2026-07-02 15:05:30",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.454,
-      "prev_close": 8.255,
-      "change": 0.19899999999999984,
-      "change_rate": 2.410660205935794
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.475,
-        "gold_price": 847.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20399999999999885,
-        "change_rate": 2.466449038810287
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.851,
-        "gold_price": 885.1,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.2090000000000014,
-        "change_rate": 2.418421661652412
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.883,
-        "gold_price": 888.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.2129999999999992,
-        "change_rate": 2.4567474048442817
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 17:19": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4078.02,
-      "intl_unit": "美元/盎司",
-      "cny_price": 889.7481,
-      "update_time": "2026-07-02 15:05:30",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.454,
-      "prev_close": 8.255,
-      "change": 0.19899999999999984,
-      "change_rate": 2.410660205935794
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.475,
-        "gold_price": 847.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20399999999999885,
-        "change_rate": 2.466449038810287
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.851,
-        "gold_price": 885.1,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.2090000000000014,
-        "change_rate": 2.418421661652412
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.883,
-        "gold_price": 888.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.2129999999999992,
-        "change_rate": 2.4567474048442817
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 18:16": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4065.21,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.9532,
-      "update_time": "2026-07-02 15:05:30",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.454,
-      "prev_close": 8.255,
-      "change": 0.19899999999999984,
-      "change_rate": 2.410660205935794
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.475,
-        "gold_price": 847.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20399999999999885,
-        "change_rate": 2.466449038810287
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.851,
-        "gold_price": 885.1,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.2090000000000014,
-        "change_rate": 2.418421661652412
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.883,
-        "gold_price": 888.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.2129999999999992,
-        "change_rate": 2.4567474048442817
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 19:12": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4064.01,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.6914,
-      "update_time": "2026-07-02 15:05:30",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.454,
-      "prev_close": 8.255,
-      "change": 0.19899999999999984,
-      "change_rate": 2.410660205935794
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.475,
-        "gold_price": 847.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20399999999999885,
-        "change_rate": 2.466449038810287
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.851,
-        "gold_price": 885.1,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.2090000000000014,
-        "change_rate": 2.418421661652412
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.883,
-        "gold_price": 888.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.2129999999999992,
-        "change_rate": 2.4567474048442817
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
-  },
-  "2026-07-02 20:08": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4067.92,
-      "intl_unit": "美元/盎司",
-      "cny_price": 886.7074,
-      "update_time": "2026-07-02 15:05:30",
-      "prev_close": null
-    },
-    "au9999": {
-      "name": "AU9999",
-      "price": 905.75,
-      "prev_close": null,
-      "change": null,
-      "change_rate": null
-    },
-    "boshi_etf": {
-      "name": "博时黄金ETF",
-      "code": "159937",
-      "price": 8.454,
-      "prev_close": 8.255,
-      "change": 0.19899999999999984,
-      "change_rate": 2.410660205935794
-    },
-    "gold_funds": {
-      "002610": {
-        "name": "博时黄金",
-        "code": "002610",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      },
-      "000216": {
-        "name": "华安黄金",
-        "code": "000216",
-        "etf_name": "华安黄金ETF",
-        "etf_price": 8.475,
-        "gold_price": 847.5,
-        "prev_etf_price": 8.271,
-        "prev_gold_price": 827.1,
-        "change": 0.20399999999999885,
-        "change_rate": 2.466449038810287
-      },
-      "002963": {
-        "name": "易方达黄金",
-        "code": "002963",
-        "etf_name": "易方达黄金ETF",
-        "etf_price": 8.851,
-        "gold_price": 885.1,
-        "prev_etf_price": 8.642,
-        "prev_gold_price": 864.2,
-        "change": 0.2090000000000014,
-        "change_rate": 2.418421661652412
-      },
-      "000218": {
-        "name": "国泰黄金",
-        "code": "000218",
-        "etf_name": "国泰黄金ETF",
-        "etf_price": 8.883,
-        "gold_price": 888.3,
-        "prev_etf_price": 8.67,
-        "prev_gold_price": 867.0,
-        "change": 0.2129999999999992,
-        "change_rate": 2.4567474048442817
-      },
-      "000929": {
-        "name": "博时黄金D",
-        "code": "000929",
-        "etf_name": "博时黄金ETF",
-        "etf_price": 8.454,
-        "gold_price": 845.4,
-        "prev_etf_price": 8.255,
-        "prev_gold_price": 825.5,
-        "change": 0.19899999999999984,
-        "change_rate": 2.410660205935794
-      }
-    },
-    "brands": {
-      "": 1208.0,
-      "周六福": 1203.0,
-      "老庙黄金": 1208.0,
-      "老凤祥": 1208.0,
-      "中国黄金": 1188.0,
-      "潮宏基": 1208.0,
-      "金至尊": 1208.0,
-      "谢瑞麟": 1208.0,
-      "六福珠宝": 1206.0,
-      "周生生": 1213.0,
-      "周大福": 1208.0
-    }
   }
 };
-var GEN_TIME = "2026-07-03 09:27";
+var GEN_TIME = "2026-07-01 22:06";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -2276,8 +788,8 @@ var gLastCrossIdx = -1;
 var gHideTimer = null;
 var gTapHint = null;
 var gChartArea = null;
-var gCrossLine = null;   /* v18: deprecated, kept for compat */
-var gClTime = null;      /* v18: deprecated, kept for compat */
+var gCrossLine = null;
+var gClTop = null, gClPrice = null, gClTime = null;
 var gLegendBar = null;
 var gParsedData = null;
 var gIsDown = false;
@@ -2408,11 +920,11 @@ function getScales(groupName) {
   return scales;
 }
 
-/* ===== 错误显示工具 ===== */
+/* ===== 错误显示工具（排查时用） ===== */
 function showError(msg) {
   var eb = document.getElementById("errorBox");
   var ta = document.getElementById("tapHint");
-  if (eb) { eb.textContent = "\u274C " + msg; eb.style.display = "inline"; }
+  if (eb) { eb.textContent = "❌ " + msg; eb.style.display = "inline"; }
   if (ta) { ta.style.opacity = "1"; }
   console.error(msg);
 }
@@ -2425,11 +937,13 @@ function logError(prefix, err) {
 }
 window.addEventListener("error", function(e){
   var msg = e.message || "";
+  // 移动端跨域/压缩脚本常只返回 "Script error."，缺少文件名行号
   if (msg === "Script error." || (!e.filename && !e.lineno)) {
     showError("页面脚本异常，请尝试刷新。若持续出现请截图反馈。");
   } else {
     showError("全局错误: " + msg + " @ " + (e.filename||"") + ":" + (e.lineno||""));
   }
+  // 打印完整对象供调试
   console.error("window.onerror", e);
 });
 window.addEventListener("unhandledrejection", function(e){
@@ -2439,6 +953,7 @@ window.addEventListener("unhandledrejection", function(e){
 /* ===== 渲染图表 ===== */
 function renderChart(groupName) {
   try {
+    // 取消任何进行中的动画帧，避免旧事件处理器在新 chart 上操作
     if (gRafId) { cancelAnimationFrame(gRafId); gRafId = null; }
     gPendingCssX = null;
     gIsDown = false;
@@ -2459,14 +974,13 @@ function renderChart(groupName) {
         events: []
       }
     });
-    /* v18: 初始化 canvas 覆盖层（必须在 chart 创建后） */
-    initOverlay();
     document.getElementById("headerDate").textContent =
       gParsedData.rawLabels[0].slice(5) + " ~ " + gParsedData.rawLabels[gParsedData.rawLabels.length-1].slice(5);
     renderTabs();
     renderLegendBar();
     gLastCrossIdx = -1;
     if (gCrossLine) gCrossLine.style.display = "none";
+    if (gClTop) gClTop.style.display = "none";
     if (gClTime) gClTime.style.display = "none";
     removeCrosshairDetails();
     if (gTapHint) gTapHint.style.opacity = "1";
@@ -2522,68 +1036,27 @@ function toggleHighlight(key) {
   }
 }
 
-/* ===== 竖线 + 价格标签（全部从数据点坐标派生，不依赖手指位置） ===== */
+/* ===== 竖线 + 价格标签 ===== */
 
-/* ===== v18：Canvas 覆盖层绘制十字线 / 圆点 / 标签 —— 零坐标转换 ===== */
-
-var gOverlay = null;          /* 覆盖层 canvas */
-var gOverlayCtx = null;       /* 其 2D 上下文 */
-var gCrossIdx = -1;           /* 当前十字线对应的数据点索引 */
-
-/**
- * 初始化覆盖层 canvas：尺寸与 Chart.js 内部 canvas 一致
- * 这样 dp.x/dp.y 可以直接用于绘制，无需任何 dpr/百分比/px 换算
- */
-function initOverlay() {
+/* 竖线完全跟随手指：传入的是 CSS X 像素 */
+function showCrosshair(cssX, idx, dprX, dprY) {
   try {
-    gOverlay = document.getElementById('crossOverlay');
-    if (!gOverlay || !gChart || !gChart.canvas) return;
-    /* 设置为与 chart 内部分辨率一致 */
-    gOverlay.width = gChart.canvas.width;
-    gOverlay.height = gChart.canvas.height;
-    gOverlay.style.width = '100%';
-    gOverlay.style.height = '100%';
-    gOverlayCtx = gOverlay.getContext('2d');
-  } catch (err) {
-    logError('initOverlay', err);
-  }
-}
+    if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gClPrice || !gClTop || !gParsedData) return;
 
-/**
- * 清空覆盖层
- */
-function clearOverlay() {
-  if (!gOverlayCtx || !gOverlay || !gChart) return;
-  /* 每次清空前同步尺寸（处理 resize） */
-  if (gOverlay.width !== gChart.canvas.width || gOverlay.height !== gChart.canvas.height) {
-    gOverlay.width = gChart.canvas.width;
-    gOverlay.height = gChart.canvas.height;
-  }
-  gOverlayCtx.clearRect(0, 0, gOverlay.width, gOverlay.height);
-}
+    gCrossLine.style.left = cssX + "px";
+    gCrossLine.style.display = "block";
 
-/**
- * 绘制虚线竖线 + 时间标签 + 圆点 + 价格标签（全部在 overlay canvas 上）
- * @param {number} idx - 数据点索引
- * @param {number} [overrideLineX] - 可选：竖线 X 位置（canvas 内部坐标），不传则用数据点位置
- */
-function drawCrosshair(idx, overrideLineX) {
-  try {
-    if (!gChart || !gOverlayCtx || !gParsedData || idx < 0) return;
+    /* 底部时间 */
+    var label = gParsedData.rawLabels[idx];
+    var p = label.split(" ");
+    gClTime.textContent = p[0].slice(5) + " " + p[1].slice(0,5);
+    gClTime.style.display = "block";
 
-    var cvW = gOverlay.width;
-    var cvH = gOverlay.height;
-    clearOverlay();
-
-    var ca = gChart.chartArea;
-    if (!ca) return;
-
+    /* 顶部价格：所有可见 series */
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
     gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
-
-    /* 收集当前 idx 下所有可见 series 的数据点（canvas 内部坐标） */
-    var pts = [];
+    var rows = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
       var dsIdx = dsIndexMap[s.key];
@@ -2592,170 +1065,205 @@ function drawCrosshair(idx, overrideLineX) {
       if (meta && meta.hidden) continue;
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
-      var pt = meta.data && meta.data[idx];
-      if (!pt || typeof pt.x !== 'number' || typeof pt.y !== 'number') continue;
-      pts.push({ key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: pt.x, y: pt.y });
+      rows.push({color: s.color, text: v.toFixed(s.decimals) + " " + s.unit});
+    }
+    if (rows.length > 0) {
+      gClPrice.innerHTML = rows.map(function(r){
+        return '<div class="cl-price-row"><span class="r-dot" style="background:' + r.color + '"></span><span class="r-text" style="color:' + r.color + '">' + r.text + '</span></div>';
+      }).join('');
+      gClTop.style.display = "flex";
+    } else {
+      gClTop.style.display = "none";
     }
 
-    if (pts.length === 0) return;
-
-    /* ---- 1. 竖线（从图表区顶部到底部）---- */
-    var lineX = (overrideLineX !== undefined && overrideLineX !== null) ? overrideLineX : pts[0].x;
-    gOverlayCtx.save();
-    gOverlayCtx.strokeStyle = 'rgba(212,175,55,0.8)';
-    gOverlayCtx.lineWidth = 1;
-    gOverlayCtx.setLineDash([4, 4]);
-    gOverlayCtx.beginPath();
-    gOverlayCtx.moveTo(lineX, ca.top);
-    gOverlayCtx.lineTo(lineX, ca.bottom);
-    gOverlayCtx.stroke();
-    gOverlayCtx.restore();
-
-    /* ---- 2. 底部时间标签 ---- */
-    var label = gParsedData.rawLabels[idx];
-    var p = label.split(' ');
-    var timeStr = p[0].slice(5) + ' ' + p[1].slice(0,5);
-    gOverlayCtx.save();
-    gOverlayCtx.font = '600 12px -apple-system, BlinkMacSystemFont, PingFang SC, sans-serif';
-    var tm = gOverlayCtx.measureText(timeStr);
-    var tx = lineX - tm.width / 2;
-    var ty = ca.bottom + 16;
-    /* 背景 */
-    gOverlayCtx.fillStyle = 'rgba(212,175,55,0.95)';
-    roundRect(gOverlayCtx, tx - 5, ty - 10, tm.width + 10, 14, 3);
-    gOverlayCtx.fill();
-    /* 文字 */
-    gOverlayCtx.fillStyle = '#0e0e1a';
-    gOverlayCtx.textBaseline = 'middle';
-    gOverlayCtx.fillText(timeStr, tx, ty - 3);
-    gOverlayCtx.restore();
-
-    /* ---- 3. 圆点 + 价格标签（按 Y 排序，从下往上排列避免遮挡）---- */
-    pts.sort(function(a, b) { return a.y - b.y; });
-
-    for (var i = 0; i < pts.length; i++) {
-      var pt = pts[i];
-
-      /* 圆点：白边 + 填充色 */
-      gOverlayCtx.save();
-      gOverlayCtx.beginPath();
-      gOverlayCtx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-      gOverlayCtx.fillStyle = '#fff';
-      gOverlayCtx.fill();
-      gOverlayCtx.lineWidth = 2;
-      gOverlayCtx.strokeStyle = pt.color;
-      gOverlayCtx.stroke();
-      /* 内部填充 */
-      gOverlayCtx.beginPath();
-      gOverlayCtx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-      gOverlayCtx.fillStyle = pt.color;
-      gOverlayCtx.fill();
-      gOverlayCtx.restore();
-
-      /* 价格标签 */
-      var txt = pt.value.toFixed(pt.decimals) + ' ' + pt.unit;
-      gOverlayCtx.save();
-      gOverlayCtx.font = '700 11px -apple-system, BlinkMacSystemFont, PingFang SC, sans-serif';
-      var twm = gOverlayCtx.measureText(txt);
-      var tagPadX = 6, tagPadY = 2;
-      var tagW = twm.width + tagPadX * 2;
-      var tagH = 16 + tagPadY * 2;
-      var tagX = pt.x + 7;   /* 默认在圆点右边 */
-      var tagY = pt.y - tagH / 2;
-
-      /* 右边界检查 */
-      if (tagX + tagW > cvW - 4) {
-        tagX = pt.x - tagW - 7;  /* 放左边 */
-      }
-      /* 上边界检查 */
-      if (tagY < ca.top + 2) tagY = ca.top + 2;
-      /* 下边界检查 */
-      if (tagY + tagH > ca.bottom - 18) tagY = ca.bottom - 18 - tagH;
-
-      /* 标签背景 */
-      gOverlayCtx.fillStyle = 'rgba(14,14,26,0.94)';
-      gOverlayCtx.strokeStyle = 'rgba(255,255,255,0.15)';
-      gOverlayCtx.lineWidth = 1;
-      roundRect(gOverlayCtx, tagX, tagY, tagW, tagH, 4);
-      gOverlayCtx.fill();
-      gOverlayCtx.stroke();
-
-      /* 彩色圆点 */
-      gOverlayCtx.beginPath();
-      gOverlayCtx.arc(tagX + tagPadX + 3, tagY + tagH / 2, 3, 0, Math.PI * 2);
-      gOverlayCtx.fillStyle = pt.color;
-      gOverlayCtx.fill();
-
-      /* 文字 */
-      gOverlayCtx.fillStyle = pt.color;
-      gOverlayCtx.textBaseline = 'middle';
-      gOverlayCtx.fillText(txt, tagX + tagPadX + 10, tagY + tagH / 2);
-
-      gOverlayCtx.restore();
-    }
+    /* 更新竖线旁价格标签 */
+    updatePriceTags(cssX, idx, dprX, dprY);
   } catch (err) {
-    logError('drawCrosshair', err);
+    logError("showCrosshair", err);
   }
 }
 
-/**
- * 绘制圆角矩形辅助函数
- */
-function roundRect(ctx, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-/*
- * 对外接口：showCrosshair / moveCrosshairOnly / removeCrosshairDetails
- * 全部委托给 drawCrosshair(idx)
- */
-function showCrosshair(cssX, idx, dprX, dprY) {
+function updatePriceTags(cssX, idx, dprX, dprY) {
   try {
-    gCrossIdx = idx;
-    drawCrosshair(idx);
-    if (gTapHint) gTapHint.style.opacity = '0';
-  } catch (err) { logError('showCrosshair', err); }
+    if (!gChart || !gChartArea || !gParsedData) return;
+    var ca = gChart.chartArea;
+    if (!ca) return;
+    var group = GROUPS[gCurrentGroup];
+    var dsIndexMap = {};
+    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+
+    var existing = {};
+    var oldTags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(oldTags, function(el){ existing[el.dataset.key] = el; });
+
+    var existingDots = {};
+    var oldDots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
+
+    /* chartArea 边界（CSS 像素） */
+    var areaTop = canvasToCssY(ca.top, dprY);
+    var areaBottom = canvasToCssY(ca.bottom, dprY);
+    var areaLeft = canvasToCssX(ca.left, dprX);
+    var areaRight = canvasToCssX(ca.right, dprX);
+    var TAG_H = 20; /* 估算标签高度，含 padding/border */
+    var halfH = TAG_H / 2;
+    var MIN_GAP = 4; /* 标签与边界/标签的最小间距 */
+    var MAX_SHIFT = TAG_H; /* 偏离数据点的最大距离（比之前更小） */
+
+    var placed = []; /* 已放置标签的 {center, top, bottom} */
+
+    group.series.forEach(function(s){
+      var dsIdx = dsIndexMap[s.key];
+      if (dsIdx === undefined) return;
+      var meta = gChart.getDatasetMeta(dsIdx);
+      if (meta && meta.hidden) return;
+      var v = gParsedData.datasets[s.key][idx];
+      if (v === null || v === undefined) return;
+
+      /* 取 Y 像素（优先用 meta.data[idx].y，否则用 scale） */
+      var cssY;
+      var pt = meta.data && meta.data[idx];
+      if (pt && typeof pt.y === "number" && !isNaN(pt.y)) {
+        cssY = canvasToCssY(pt.y, dprY);
+      } else {
+        var ys = gChart.scales[s.axis];
+        if (!ys) return;
+        cssY = canvasToCssY(ys.getPixelForValue(v), dprY);
+      }
+
+      /* 高亮圆点始终放在真实数据点位置 */
+      var dot = existingDots[s.key];
+      if (dot) {
+        delete existingDots[s.key];
+      } else {
+        dot = document.createElement("div");
+        dot.className = "highlight-dot";
+        dot.dataset.key = s.key;
+        gChartArea.appendChild(dot);
+      }
+      dot.style.backgroundColor = s.color;
+      dot.style.left = cssX + "px";
+      dot.style.top = cssY + "px";
+      /* 高亮模式下只显示当前高亮 series 的圆点；否则显示所有可见 series */
+      if (gHighlightedSeries && gHighlightedSeries !== s.key) {
+        dot.style.display = "none";
+      } else {
+        dot.style.display = "block";
+      }
+
+      /* 标签中心默认对齐数据点，但限制在绘图区域内 */
+      var center = cssY;
+      var minCenter = areaTop + halfH + MIN_GAP;
+      var maxCenter = areaBottom - halfH - MIN_GAP;
+      if (center < minCenter) center = minCenter;
+      if (center > maxCenter) center = maxCenter;
+
+      /* 防重叠：优先保持贴近数据点，只在重叠时小范围偏移 */
+      var bestCenter = center;
+      var bestDist = 0;
+
+      /* 先尝试向下移动 */
+      var tryCenter = center;
+      var shifted = false;
+      for (var loop = 0; loop < placed.length; loop++) {
+        var p = placed[loop];
+        if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+          var newCenter = p.bottom + halfH + MIN_GAP;
+          if (newCenter <= maxCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+            tryCenter = newCenter;
+            shifted = true;
+          } else {
+            shifted = false;
+            break;
+          }
+        }
+      }
+      if (shifted) { bestCenter = tryCenter; bestDist = Math.abs(bestCenter - cssY); }
+
+      /* 向下塞不下则尝试向上 */
+      if (!shifted) {
+        tryCenter = center;
+        for (var loop = 0; loop < placed.length; loop++) {
+          var p = placed[loop];
+          if (tryCenter + halfH > p.top - MIN_GAP && tryCenter - halfH < p.bottom + MIN_GAP) {
+            var newCenter = p.top - halfH - MIN_GAP;
+            if (newCenter >= minCenter && Math.abs(newCenter - cssY) <= MAX_SHIFT) {
+              tryCenter = newCenter;
+              shifted = true;
+            } else {
+              shifted = false;
+              break;
+            }
+          }
+        }
+        if (shifted) {
+          var dist = Math.abs(tryCenter - cssY);
+          if (bestCenter === center || dist < bestDist) { bestCenter = tryCenter; bestDist = dist; }
+        }
+      }
+
+      center = bestCenter;
+      var top = center - halfH;
+      var bottom = center + halfH;
+      placed.push({center: center, top: top, bottom: bottom});
+
+      var tag = existing[s.key];
+      if (tag) {
+        delete existing[s.key];
+      } else {
+        tag = document.createElement("div");
+        tag.className = "price-tag";
+        tag.dataset.key = s.key;
+        gChartArea.appendChild(tag);
+      }
+      tag.innerHTML = '<span class="pt-dot" style="background:' + s.color + '"></span><span class="pt-text" style="color:' + s.color + '">' + v.toFixed(s.decimals) + " " + s.unit + '</span>';
+      tag.style.top = center + "px";
+
+      /* 水平位置：默认放竖线右侧，空间不够则放左侧 */
+      var left = cssX + 5;
+      tag.style.display = "flex"; /* 先 display 才能测宽度 */
+      var tagWidth = tag.offsetWidth || 70; /* fallback 70px */
+      if (left + tagWidth + 4 > areaRight && cssX - tagWidth - 4 >= areaLeft) {
+        left = cssX - tagWidth - 4;
+      }
+      tag.style.left = left + "px";
+    });
+
+    /* 移除多余的旧标签和旧圆点 */
+    Object.keys(existing).forEach(function(k){ existing[k].remove(); });
+    Object.keys(existingDots).forEach(function(k){ existingDots[k].remove(); });
+  } catch (err) {
+    logError("updatePriceTags", err);
+  }
 }
 
 function moveCrosshairOnly(cssX) {
-  /* 竖线跟随手指位置，标签/圆点保持在数据点上 */
   try {
-    if (gCrossIdx < 0 || !gChart || !gChartArea || !gChart.canvas) return;
-
-    var cv = gChart.canvas;
-    var cvRect = cv.getBoundingClientRect();
-    var areaRect = gChartArea.getBoundingClientRect();
-    if (!areaRect || areaRect.width === 0) return;
-
-    var dprX = cv.width / cvRect.width;
-    var ca = gChart.chartArea;
-    if (!ca) return;
-
-    /* 手指在 chartArea 中的位置 → 转换为 canvas 内部 X */
-    var clampedCssX = Math.max(0, Math.min(cssX, areaRect.width));
-    var fingerCanvasX = ca.left + (clampedCssX / areaRect.width) * ca.width;
-    fingerCanvasX = Math.max(ca.left, Math.min(fingerCanvasX, ca.right));
-
-    drawCrosshair(gCrossIdx, fingerCanvasX);
-  } catch (err) { logError('moveCrosshairOnly', err); }
+    if (!gChartArea || !gCrossLine) return;
+    /* 只移动已有标签和圆点的 X，不重建（避免抖动） */
+    var tags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(tags, function(el){ el.style.left = (cssX + 5) + "px"; });
+    var dots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(dots, function(el){ el.style.left = cssX + "px"; });
+    gCrossLine.style.left = cssX + "px";
+  } catch (err) {
+    logError("moveCrosshairOnly", err);
+  }
 }
 
 function removeCrosshairDetails() {
-  clearOverlay();
-  gCrossIdx = -1;
+  try {
+    var tags = gChartArea.querySelectorAll(".price-tag");
+    [].forEach.call(tags, function(el){ el.remove(); });
+    var dots = gChartArea.querySelectorAll(".highlight-dot");
+    [].forEach.call(dots, function(el){ el.remove(); });
+  } catch (err) {
+    logError("removeCrosshairDetails", err);
+  }
 }
 
+/* ===== Tab 栏左右滑动切换 ===== */
+function bindTabSwipe() {
   var tabs = document.getElementById("tabs");
   var startX = 0, startY = 0;
   var SWIPE_THRESHOLD = 50;
@@ -2825,8 +1333,10 @@ function bindLegendSwipe() {
         var idx = keys.indexOf(gHighlightedSeries);
 
         if (dx < 0) {
+          // 左滑：下一个（循环）
           idx = (idx + 1 >= keys.length) ? 0 : idx + 1;
         } else {
+          // 右滑：上一个（循环）
           idx = (idx - 1 < 0) ? keys.length - 1 : idx - 1;
         }
         toggleHighlight(keys[idx]);
@@ -2837,21 +1347,22 @@ function bindLegendSwipe() {
 }
 
 /* ===== 触摸 / 鼠标事件 ===== */
+/* 只绑定一次，renderChart 时不再重复添加，避免多组监听器冲突 */
 function bindEvents() {
   if (!gChartArea) return;
 
   function getCssXFromTouch(e) {
     try {
-      if (e.touches && e.touches.length > 0 && gChartArea) {
-        return e.touches[0].clientX - gChartArea.getBoundingClientRect().left;
+      if (e.touches && e.touches.length > 0 && gChart && gChart.canvas) {
+        return e.touches[0].clientX - gChart.canvas.getBoundingClientRect().left;
       }
     } catch (err) { logError("getCssXFromTouch", err); }
     return null;
   }
   function getCssXFromMouse(e) {
     try {
-      if (gChartArea) {
-        return e.clientX - gChartArea.getBoundingClientRect().left;
+      if (gChart && gChart.canvas) {
+        return e.clientX - gChart.canvas.getBoundingClientRect().left;
       }
     } catch (err) { logError("getCssXFromMouse", err); }
     return null;
@@ -2922,23 +1433,25 @@ function bindEvents() {
 
 function onMove(cssX) {
   try {
-    if (!gChart || !gChart.chartArea || !gChartArea || !gParsedData) return;
+    if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
 
-    /* cssX 是相对于 gChartArea 的像素偏移，转换为 canvas 内部坐标找数据点 */
-    var areaRect = gChartArea.getBoundingClientRect();
-    if (!areaRect || areaRect.width === 0) return;
-    var clampedCssX = Math.max(0, Math.min(cssX, areaRect.width));
+    var rect = gChart.canvas.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    var dprX = gChart.canvas.width / rect.width;
+    var dprY = gChart.canvas.height / rect.height;
 
-    /* cssX 在 chartArea 中的比例 → 映射到 canvas 内部 X */
+    /* 限制到 canvas 可视区域内 */
+    var clampedCssX = Math.max(0, Math.min(cssX, rect.width));
+    var canvasX = cssToCanvasX(clampedCssX, dprX);
+
     var ca = gChart.chartArea;
-    var canvasX = ca.left + (clampedCssX / areaRect.width) * ca.width;
     var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
     var idx = getIndexAtCanvasX(clampedCanvasX);
     if (idx < 0) return;
 
     if (idx !== gLastCrossIdx) {
       gLastCrossIdx = idx;
-      showCrosshair(clampedCssX, idx, null, null);
+      showCrosshair(clampedCssX, idx, dprX, dprY);
       if (gTapHint) gTapHint.style.opacity = "0";
     } else {
       moveCrosshairOnly(clampedCssX);
@@ -2954,7 +1467,9 @@ function onEnd() {
     clearTimeout(gHideTimer);
     gHideTimer = setTimeout(function(){
       try {
-        clearOverlay();
+        gCrossLine.style.display = "none";
+        gClTime.style.display = "none";
+        gClTop.style.display = "none";
         removeCrosshairDetails();
         gLastCrossIdx = -1;
         if (gTapHint) gTapHint.style.opacity = "1";
@@ -2992,6 +1507,7 @@ function fetchLatest() {
           }
         }
 
+        /* 清理过期数据：保留最近 1000 条 */
         var all = Object.keys(RAW_DATA).sort();
         if (all.length > 1000) {
           var keep = all.slice(-1000);
@@ -3000,6 +1516,7 @@ function fetchLatest() {
           RAW_DATA = trimmed;
         }
 
+        /* 重新渲染 */
         gParsedData = parseData();
         if (gChart) {
           gChart.data.labels = gParsedData.labels;
@@ -3009,7 +1526,7 @@ function fetchLatest() {
             gParsedData.rawLabels[0].slice(5) + " ~ " + gParsedData.rawLabels[gParsedData.rawLabels.length-1].slice(5);
         }
       })
-      .catch(function(err) { /* 静默失败 */ });
+      .catch(function(err) { /* 静默失败：使用页面内嵌数据 */ });
   } catch (err) { logError("fetchLatest", err); }
 }
 
@@ -3020,7 +1537,10 @@ function init() {
       return;
     }
     gChartArea = document.getElementById("chartArea");
-    /* v18: crossLine/clTime DOM elements removed, using canvas overlay instead */
+    gCrossLine = document.getElementById("crossLine");
+    gClTime = document.getElementById("clTime");
+    gClPrice = document.getElementById("clPrice");
+    gClTop = document.getElementById("clTop");
     gTapHint = document.getElementById("tapHint");
     gLegendBar = document.getElementById("legendBar");
     if (!gChartArea) { showError("找不到 #chartArea 元素"); return; }
