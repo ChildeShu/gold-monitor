@@ -436,15 +436,15 @@ function toggleHighlight(key) {
   }
 }
 
-/* ===== 竖线 + 价格标签（百分比定位，消除DPI依赖） ===== */
+/* ===== 竖线 + 价格标签（clientWidth DPR法，兼容PC+手机） ===== */
 
 function showCrosshair(cssX, idx) {
   try {
     if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
 
-    var canvasRect = gChart.canvas.getBoundingClientRect();
+    var canvasEl = gChart.canvas;
     var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasRect.left - areaRect.left;
+    var offsetX = canvasEl.getBoundingClientRect().left - areaRect.left;
     var areaCssX = cssX + offsetX;
 
     gCrossLine.style.left = areaCssX + "px";
@@ -465,24 +465,24 @@ function showCrosshair(cssX, idx) {
 }
 
 /*
- * updatePriceTags — 百分比定位法
+ * updatePriceTags — clientWidth DPR 法
  *
- * Chart.js 的 meta.data[idx].x/y 是 canvas 物理像素（相对于canvas左上角）。
- * chartArea (ca.left/top/right/bottom) 也是同一坐标系。
- * 两者的比值 = 在 chartArea 内的百分比（0~1），与 DPI 完全无关：
- *   pctX = (pt.x - ca.left) / (ca.right - ca.left)
- *   pctY = (pt.y - ca.top) / (ca.bottom - ca.top)
- * 再乘以 chartArea 的 CSS 尺寸即得最终像素位置。
+ * Chart.js meta.data[idx].x/y 是 canvas 内部物理像素。
+ * 用 canvas.clientWidth / clientHeight 取 CSS 尺寸（比 getBoundingClientRect 更可靠，
+ * 不受 border/transform/滚动条影响），计算实际 DPR：
+ *   dprX = canvas.width  / canvas.clientWidth
+ *   dprY = canvas.height / clientHeight
+ * 这个 dpr 就是 Chart.js 内部使用的，在任何设备上都精确。
+ *
+ * 坐标转换：
+ *   cssX = pt.x / dprX + offsetX   (offsetX = canvas在chartArea内的左偏移)
+ *   cssY = pt.y / dprY + offsetY   (offsetY = canvas在chartArea内的上偏移)
  */
 function updatePriceTags(areaCssX, idx) {
   try {
     if (!gChart || !gChartArea || !gParsedData) return;
     var ca = gChart.chartArea;
     if (!ca) return;
-    /* 防御：chartArea 零尺寸时跳过 */
-    var caW = ca.right - ca.left;
-    var caH = ca.bottom - ca.top;
-    if (caW <= 0 || caH <= 0) return;
 
     var group = GROUPS[gCurrentGroup];
     var dsIndexMap = {};
@@ -496,11 +496,30 @@ function updatePriceTags(areaCssX, idx) {
     var oldDots = gChartArea.querySelectorAll(".highlight-dot");
     [].forEach.call(oldDots, function(el){ existingDots[el.dataset.key] = el; });
 
+    /*
+     * 用 clientWidth/clientHeight 获取 canvas 的 CSS 渲染尺寸。
+     * 这是最可靠的——它就是浏览器实际渲染的像素数，
+     * 与 Chart.js 设置 canvas.width/canvas.height 时用的基准一致。
+     */
+    var cv = gChart.canvas;
+    var cssW = cv.clientWidth;   /* canvas CSS 宽度 */
+    var cssH = cv.clientHeight;  /* canvas CSS 高度 */
+    if (cssW <= 0 || cssH <= 0) return;
+
+    var dprX = cv.width / cssW;   /* 实际使用的水平 DPR */
+    var dprY = cv.height / cssH;   /* 实际使用的垂直 DPR */
+
+    /* canvas 在 chartArea 内的偏移（CSS 像素） */
+    var cr = cv.getBoundingClientRect();
+    var ar = gChartArea.getBoundingClientRect();
+    var cOffX = cr.left - ar.left;
+    var cOffY = cr.top - ar.top;
+
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
     if (areaW <= 0 || areaH <= 0) return;
 
-    /* 收集所有可见 series 的数据点信息 —— 百分比坐标 */
+    /* 收集所有可见 series 的数据点信息 */
     var items = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
@@ -514,14 +533,11 @@ function updatePriceTags(areaCssX, idx) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      /* 百分比坐标（与 DPI 无关） */
-      var pctX = (pt.x - ca.left) / caW;
-      var pctY = (pt.y - ca.top) / caH;
-      /* 转为 chartArea 内的 CSS 像素 */
-      var cssX = pctX * areaW;
-      var cssY = pctY * areaH;
+      /* canvas 物理像素 → CSS 像素 → chartArea 坐标系 */
+      var x = pt.x / dprX + cOffX;
+      var y = pt.y / dprY + cOffY;
 
-      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: cssX, y: cssY});
+      items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
     }
 
     if (items.length === 0) return;
@@ -554,13 +570,6 @@ function updatePriceTags(areaCssX, idx) {
       rawTags.push({tag: tag, item: it, w: tag.offsetWidth || 80, h: tag.offsetHeight || 20});
     }
 
-    /*
-     * 布局：标签紧贴圆点，不重叠
-     * 策略：
-     *   - 每个标签紧贴自己对应的数据点（圆点旁边2px）
-     *   - 碰撞检测，重叠时自动推开
-     */
-
     /* 左右偏好 */
     var maxTw = 0;
     for (var i = 0; i < rawTags.length; i++) { if (rawTags[i].w > maxTw) maxTw = rawTags[i].w; }
@@ -575,11 +584,9 @@ function updatePriceTags(areaCssX, idx) {
       var tw = rt.w;
       var th = rt.h;
 
-      /* 默认放右边 */
       var tagLeft = it.x + DOT_R + 2;
       var tagTop = it.y + DOT_R + 2;
 
-      /* 右边不够 → 放左边 */
       if (tagLeft + tw > areaW - MARGIN) {
         tagLeft = it.x - DOT_R - tw - 2;
       }
@@ -616,9 +623,12 @@ function updatePriceTags(areaCssX, idx) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      /* 圆点定位（百分比坐标已正确，只需边界保护） */
-      dot.style.left = Math.max(MARGIN, Math.min(it.x - DOT_R, areaW - MARGIN - DOT_R * 2)) + "px";
-      dot.style.top = Math.max(MARGIN, Math.min(it.y - DOT_R, areaH - MARGIN - DOT_R * 2)) + "px";
+      /* 圆点 X = 竖线 X 坐标（已验证准确），不使用 DPR 换算的 it.x */
+      var dotX = areaCssX - DOT_R;  /* 居中到竖线上 */
+      var dotY = it.y - DOT_R;
+      /* 边界钳制 */
+      dot.style.left = Math.max(MARGIN, Math.min(dotX, areaW - MARGIN - DOT_R * 2)) + "px";
+      dot.style.top = Math.max(MARGIN, Math.min(dotY, areaH - MARGIN - DOT_R * 2)) + "px";
       dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
       /* 标签边界保护 */
@@ -806,20 +816,21 @@ function bindEvents() {
   }, {passive:false});
 
   /* touchmove/touchend 绑在 document 上，防止手指滑出 chartArea 后丢失追踪 */
-  document.addEventListener("touchmove", function(e){
+  /* touchmove back on chartArea to avoid passive:false error in WeChat */
+  gChartArea.addEventListener("touchmove", function(e){
     try {
       if (!gIsDown || !e.touches || e.touches.length === 0) return;
       var cssX = getCssXFromTouch(e);
       if (cssX !== null) scheduleMove(cssX);
-      if (e.cancelable) e.preventDefault();
-    } catch (err) { logError("document touchmove", err); }
-  }, {passive:false});
+      /* touch-action:none already prevents default scroll */
+    } catch (err) { logError("chart touchmove", err); }
+  }, {passive:true});
 
-  document.addEventListener("touchend", function(e){
-    try { onEnd(); } catch (err) { logError("document touchend", err); }
+  gChartArea.addEventListener("touchend", function(e){
+    try { onEnd(); } catch (err) { logError("chart touchend", err); }
   });
-  document.addEventListener("touchcancel", function(e){
-    try { onEnd(); } catch (err) { logError("document touchcancel", err); }
+  gChartArea.addEventListener("touchcancel", function(e){
+    try { onEnd(); } catch (err) { logError("chart touchcancel", err); }
   });
 
   gChartArea.addEventListener("mousedown", function(e){
@@ -851,26 +862,20 @@ function onMove(cssX) {
   try {
     if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
 
-    var rect = gChart.canvas.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return;
+        var cv = gChart.canvas;
+    var cssW = cv.clientWidth;
+    if (cssW <= 0) return;
 
-    /*
-     * 将交互 X 限制在 chartArea 绘制边界内 —— 用百分比法，不依赖 DPR
-     * ca.left/ca.right 是 canvas 物理像素，canvas.width 也是
-     * 比值与 DPR 无关：areaFrac = ca.left / canvas.width
-     */
+    /* clientWidth DPR */
+    var dprX = cv.width / cssW;
     var ca = gChart.chartArea;
-    var canvasW = gChart.canvas.width;
-    if (canvasW <= 0) return;
-    var areaStartFrac = ca.left / canvasW;   /* chartArea 左边占 canvas 宽度的比例 */
-    var areaEndFrac = ca.right / canvasW;     /* chartArea 右边占 canvas 宽度的比例 */
-    var cssW = rect.width;                    /* canvas 的 CSS 宽度 */
-    var chartLeftCss = areaStartFrac * cssW;
-    var chartRightCss = areaEndFrac * cssW;
+
+    /* X clamp */
+    var chartLeftCss = ca.left / dprX;
+    var chartRightCss = ca.right / dprX;
     var clampedCssX = Math.max(chartLeftCss, Math.min(cssX, chartRightCss));
 
     /* 转为 canvas 像素找索引 */
-    var dprX = canvasW / cssW;
     var canvasX = clampedCssX * dprX;
     var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
     var idx = getIndexAtCanvasX(clampedCanvasX);
