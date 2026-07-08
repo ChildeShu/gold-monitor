@@ -51,59 +51,7 @@ body{
 .chart-area{position:absolute;top:0;left:0;right:0;bottom:0;touch-action:none}
 canvas#chart{width:100%!important;height:100%!important;display:block;touch-action:none}
 
-/* ===== 竖线（金色虚线 + 底部时间标签）===== */
-.cross-line{
-  position:absolute;top:0;bottom:0;width:0;left:0;
-  pointer-events:none;display:none;z-index:20;
-}
-.cross-line .cl-dash{
-  position:absolute;left:50%;top:0;bottom:0;
-  width:1px;
-  background:repeating-linear-gradient(
-    to bottom,
-    rgba(212,175,55,0.8) 0px,
-    rgba(212,175,55,0.8) 4px,
-    transparent 4px,
-    transparent 8px
-  );
-  transform:translateX(-50%);
-}
-/* 底部时间 */
-.cross-line .cl-time{
-  position:absolute;left:50%;bottom:2px;transform:translateX(-50%);
-  font-size:10px;font-weight:600;
-  background:rgba(212,175,55,0.95);color:#0e0e1a;
-  padding:1px 7px;border-radius:4px;
-  font-variant-numeric:tabular-nums;white-space:nowrap;
-  pointer-events:none;
-}
-
-/* 竖线旁价格标签：挨着数据点，放在数据点下方优先 */
-.price-tag{
-  position:absolute;left:0;top:0;
-  display:flex;align-items:center;gap:4px;
-  padding:2px 6px;border-radius:4px;
-  font-size:11px;font-weight:700;
-  background:rgba(14,14,26,0.94);
-  border:1px solid rgba(255,255,255,0.15);
-  color:#fff;
-  pointer-events:none;
-  box-shadow:0 1px 6px rgba(0,0,0,0.5);
-  font-variant-numeric:tabular-nums;z-index:21;
-  white-space:nowrap;
-}
-.price-tag .pt-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.price-tag .pt-text{font-weight:700;font-variant-numeric:tabular-nums}
-
-/* 高亮圆点：标记竖线与数据线的实际交点 */
-.highlight-dot{
-  position:absolute;left:0;top:0;
-  width:8px;height:8px;border-radius:50%;
-  border:2px solid #fff;
-  box-shadow:0 0 0 2px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.5);
-  pointer-events:none;z-index:21;
-  /* 不用 transform，直接用 left/top 定位圆心 */
-}
+/* 竖线/圆点/价格标签全部由 Canvas 插件绘制，无需 CSS 覆盖层 */
 
 .legend-bar{
   flex-shrink:0;display:flex;gap:4px;
@@ -141,10 +89,6 @@ canvas#chart{width:100%!important;height:100%!important;display:block;touch-acti
 <div class="chart-stage">
   <div class="chart-area" id="chartArea">
     <canvas id="chart"></canvas>
-    <div class="cross-line" id="crossLine">
-      <div class="cl-dash"></div>
-      <div class="cl-time" id="clTime"></div>
-    </div>
     <div class="tap-hint" id="tapHint">← 在图表上滑动查看 →<br><span id="errorBox" style="color:#ff6b6b;display:none"></span></div>
   </div>
 </div>
@@ -1743,7 +1687,7 @@ var RAW_DATA = {
     }
   }
 };
-var GEN_TIME = "2026-07-08 15:22";
+var GEN_TIME = "2026-07-08 16:02";
 
 var GROUPS = {
   "国际": {label:"国际", series:[
@@ -1783,86 +1727,131 @@ var gLastCrossIdx = -1;
 var gHideTimer = null;
 var gTapHint = null;
 var gChartArea = null;
-var gCrossLine = null;
-var gClTime = null;
 var gLegendBar = null;
 var gParsedData = null;
 var gIsDown = false;
 var gRafId = null;
 var gPendingCssX = null;
 var gTabSwipeHandled = false;
-var gHighlightItems = [];  /* 供 canvas 插件绘制的高亮数据 */
+var gHighlightItems = [];  /* 供 canvas 插件绘制的圆点数据 {ptX, ptY, color, value, decimals, unit} */
+var gCrossActive = false;  /* 竖线是否激活 */
+var gCrossX = null;        /* 竖线 X（canvas 内部像素） */
+var gCrossTimeText = "";   /* 底部时间文本 */
 
-/* ===== Canvas 高亮插件：直接画圆点和标签（与数据线同坐标系，零DPR转换） ===== */
+/* ===== Canvas 高亮插件：直接画竖线 + 圆点 + 价格标签（全部在 canvas 内部像素空间，零坐标换算） ===== */
 var highlightOverlayPlugin = {
   id: 'highlightOverlay',
   afterDatasetsDraw: function(chart) {
-    if (!gHighlightItems || gHighlightItems.length === 0) return;
+    if (!gCrossActive) return;
     var ctx = chart.ctx;
     var ca = chart.chartArea;
     if (!ca) return;
 
+    var crossX = gCrossX;  /* canvas 内部像素 X（竖线位置） */
+    if (typeof crossX !== "number") return;
+
+    /* 1. 竖线（金色虚线，全高） */
     ctx.save();
-    for (var i = 0; i < gHighlightItems.length; i++) {
-      var item = gHighlightItems[i];
-      /* 1. 画高亮圆点 —— pt.x/pt.y 就是数据点的精确位置 */
-      ctx.beginPath();
-      ctx.arc(item.ptX, item.ptY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(212,175,55,0.85)";
+    ctx.moveTo(crossX, ca.top);
+    ctx.lineTo(crossX, ca.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* 2. 时间标签（绘制在图表区内部底部，避免被像素比缩放裁切） */
+    if (gCrossTimeText) {
+      ctx.font = 'bold 10px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+      var tw = ctx.measureText(gCrossTimeText).width + 14;
+      var th = 16;
+      var bx = crossX - tw / 2;
+      if (bx < ca.left + 2) bx = ca.left + 2;
+      if (bx + tw > ca.right - 2) bx = ca.right - tw - 2;
+      var by = ca.bottom - th - 4;
+      if (by < ca.top + 2) by = ca.top + 2;
+      ctx.fillStyle = "rgba(212,175,55,0.95)";
+      roundRect(ctx, bx, by, tw, th, 4);
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
+      ctx.fillStyle = "#0e0e1a";
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      ctx.fillText(gCrossTimeText, bx + tw / 2, by + th / 2);
+      ctx.textAlign = "left";
+    }
 
-      /* 2. 画价格标签 */
-      var text = item.value.toFixed(item.decimals) + " " + item.unit;
-      ctx.font = 'bold 11px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
-      var tw = ctx.measureText(text).width + 24;  /* 左侧彩色圆点 + padding */
-      var th = 20;
-      var labelX = item.ptX + 10;
-      var labelY = item.ptY - th / 2;
+    /* 3. 每个数据系列的圆点 + 价格标签 */
+    if (gHighlightItems && gHighlightItems.length > 0) {
+      for (var i = 0; i < gHighlightItems.length; i++) {
+        var item = gHighlightItems[i];
+        /* 圆点 */
+        ctx.beginPath();
+        ctx.arc(item.ptX, item.ptY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = item.color;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
 
-      /* 标签不超出 chartArea 右边界 */
-      if (labelX + tw > ca.right - 4) {
-        labelX = item.ptX - tw - 10;
+        /* 价格标签 */
+        var text = item.value.toFixed(item.decimals) + " " + item.unit;
+        ctx.font = 'bold 11px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
+        ctx.textAlign = "left";
+        var lw = ctx.measureText(text).width + 24;
+        var lh = 20;
+        var labelX = item.ptX + 10;
+        var labelY = item.ptY - lh / 2;
+
+        if (labelX + lw > ca.right - 4) labelX = item.ptX - lw - 10;
+        if (labelX < ca.left + 4) labelX = ca.left + 4;
+        if (labelY < ca.top + 2) labelY = item.ptY + 8;
+        if (labelY + lh > ca.bottom - 2) labelY = ca.bottom - lh - 2;
+
+        var r = 4;
+        ctx.beginPath();
+        ctx.moveTo(labelX + r, labelY);
+        ctx.lineTo(labelX + lw - r, labelY);
+        ctx.quadraticCurveTo(labelX + lw, labelY, labelX + lw, labelY + r);
+        ctx.lineTo(labelX + lw, labelY + lh - r);
+        ctx.quadraticCurveTo(labelX + lw, labelY + lh, labelX + lw - r, labelY + lh);
+        ctx.lineTo(labelX + r, labelY + lh);
+        ctx.quadraticCurveTo(labelX, labelY + lh, labelX, labelY + lh - r);
+        ctx.lineTo(labelX, labelY + r);
+        ctx.quadraticCurveTo(labelX, labelY, labelX + r, labelY);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(14,14,26,0.94)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(labelX + 10, labelY + lh / 2, 3, 0, Math.PI * 2);
+        ctx.fillStyle = item.color;
+        ctx.fill();
+
+        ctx.fillStyle = item.color;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, labelX + 18, labelY + lh / 2);
       }
-      if (labelX < ca.left + 4) labelX = ca.left + 4;
-      if (labelY < ca.top + 2) labelY = item.ptY + 8;
-      if (labelY + th > ca.bottom - 2) labelY = ca.bottom - th - 2;
-
-      /* 圆角背景 */
-      var r = 4;
-      ctx.beginPath();
-      ctx.moveTo(labelX + r, labelY);
-      ctx.lineTo(labelX + tw - r, labelY);
-      ctx.quadraticCurveTo(labelX + tw, labelY, labelX + tw, labelY + r);
-      ctx.lineTo(labelX + tw, labelY + th - r);
-      ctx.quadraticCurveTo(labelX + tw, labelY + th, labelX + tw - r, labelY + th);
-      ctx.lineTo(labelX + r, labelY + th);
-      ctx.quadraticCurveTo(labelX, labelY + th, labelX, labelY + th - r);
-      ctx.lineTo(labelX, labelY + r);
-      ctx.quadraticCurveTo(labelX, labelY, labelX + r, labelY);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(14,14,26,0.94)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      /* 标签内左侧彩色小圆点 */
-      ctx.beginPath();
-      ctx.arc(labelX + 10, labelY + th / 2, 3, 0, Math.PI * 2);
-      ctx.fillStyle = item.color;
-      ctx.fill();
-
-      /* 文字 */
-      ctx.fillStyle = item.color;
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, labelX + 18, labelY + th / 2);
     }
     ctx.restore();
   }
 };
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
 /* 注册全局插件（所有 chart 实例共享） */
 Chart.register(highlightOverlayPlugin);
 
@@ -1923,7 +1912,7 @@ function canvasToCssY(canvasY, dprY) {
   return canvasY / dprY;
 }
 
-/* ===== 根据 X 像素位置找数据点索引 ===== */
+/* ===== 根据 canvas 内部像素 X 找数据点索引 ===== */
 function getIndexAtCanvasX(canvasX) {
   var xs = gChart.scales.x;
   if (!xs) return -1;
@@ -1939,6 +1928,18 @@ function getIndexAtCanvasX(canvasX) {
     if (canvasX <= (p0 + p1) / 2) return i;
   }
   return n - 1;
+}
+
+/* 获取 canvas 的 DPR（内部像素 / CSS 像素），带容错 */
+function getCanvasDpr() {
+  try {
+    var cv = gChart.canvas;
+    var cssW = cv.clientWidth || cv.getBoundingClientRect().width;
+    if (!cssW) return 1;
+    var dpr = cv.width / cssW;
+    if (!dpr || !isFinite(dpr) || dpr <= 0) return 1;
+    return dpr;
+  } catch (e) { return 1; }
 }
 
 /* ===== 构建 dataset ===== */
@@ -2045,8 +2046,6 @@ function renderChart(groupName) {
     renderTabs();
     renderLegendBar();
     gLastCrossIdx = -1;
-    if (gCrossLine) gCrossLine.style.display = "none";
-    if (gClTime) gClTime.style.display = "none";
     removeCrosshairDetails();
     if (gTapHint) gTapHint.style.opacity = "1";
   } catch (err) {
@@ -2101,30 +2100,38 @@ function toggleHighlight(key) {
   }
 }
 
-/* ===== 竖线 + 价格标签（Canvas 插件绘制，零坐标转换） ===== */
+/* ===== 竖线 + 圆点 + 价格标签（全部 Canvas 绘制，canvas 内部像素空间） ===== */
 
-function showCrosshair(cssX, idx) {
+/*
+ * onMove 传入的是 CSS 像素 X（相对 canvas 左边缘）。
+ * 这里统一转成 canvas 内部像素再找 idx。
+ */
+function showCrosshair(canvasX, idx) {
   try {
-    if (!gChart || !gChart.chartArea || !gCrossLine || !gClTime || !gParsedData) return;
+    if (!gChart || !gChart.chartArea || !gParsedData) return;
+    var ca = gChart.chartArea;
 
-    var canvasEl = gChart.canvas;
-    var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasEl.getBoundingClientRect().left - areaRect.left;
-    var areaCssX = cssX + offsetX;
+    /* 竖线 X 吸附到该数据点的 exact 像素位置（保证竖线与圆点 X 完全重合） */
+    var clampedX = Math.max(ca.left, Math.min(canvasX, ca.right));
+    var xScale = gChart.scales.x;
+    var snapX = (xScale && typeof xScale.getPixelForValue === "function")
+      ? xScale.getPixelForValue(idx) : clampedX;
+    snapX = Math.max(ca.left, Math.min(snapX, ca.right));
 
-    /* 竖线：HTML 覆盖层（X 坐标来自触摸/鼠标事件，天然准确） */
-    gCrossLine.style.left = areaCssX + "px";
-    gCrossLine.style.display = "block";
+    /* 竖线 X（canvas 内部像素） */
+    gCrossX = snapX;
+    gCrossActive = true;
 
-    /* 底部时间 */
+    /* 底部时间文本 */
     var label = gParsedData.rawLabels[idx];
     if (label) {
       var p = label.split(" ");
-      gClTime.textContent = p[0].slice(5) + " " + (p[1] || "").slice(0,5);
-      gClTime.style.display = "block";
+      gCrossTimeText = p[0].slice(5) + " " + (p[1] || "").slice(0,5);
+    } else {
+      gCrossTimeText = "";
     }
 
-    /* 收集数据点信息 -> 存入全局变量 -> 触发 Canvas 插件重绘 */
+    /* 收集圆点数据 -> 触发 Canvas 插件重绘 */
     collectHighlightData(idx);
     gChart.draw();
     if (gTapHint) gTapHint.style.opacity = "0";
@@ -2134,51 +2141,53 @@ function showCrosshair(cssX, idx) {
 }
 
 /*
- * collectHighlightData -- 只收集数据，不做任何坐标转换
+ * collectHighlightData -- 使用 Chart.js 官方 scale.getPixelForValue() API
+ * 计算圆点坐标（canvas 内部像素），与数据线渲染同一坐标系，全平台可靠。
  *
- * Chart.js meta.data[idx].x/y 是 canvas 内部像素坐标，
- * 与数据线渲染用的是同一套坐标系。直接传给 Canvas 插件使用。
+ * 关键：圆点 X 用 xScale.getPixelForValue(idx)（与竖线同一位置），
+ *       Y 用对应 yAxis.getPixelForValue(value)。
  */
 function collectHighlightData(idx) {
   try {
     if (!gChart || !gParsedData) return;
+    var chart = gChart;
     var group = GROUPS[gCurrentGroup];
-    var dsIndexMap = {};
-    gChart.data.datasets.forEach(function(ds, i){ if(ds.seriesKey) dsIndexMap[ds.seriesKey] = i; });
+    var xScale = chart.scales.x;
+    if (!xScale) return;
 
-    /* 清理旧的 HTML 标签（兼容旧逻辑） */
-    var oldTags = gChartArea.querySelectorAll(".price-tag");
-    [].forEach.call(oldTags, function(el){ el.remove(); });
-    var oldDots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(oldDots, function(el){ el.remove(); });
-
-    /* 重新收集 */
     gHighlightItems = [];
     for (var si = 0; si < group.series.length; si++) {
       var s = group.series[si];
-      var dsIdx = dsIndexMap[s.key];
-      if (dsIdx === undefined) continue;
-      var meta = gChart.getDatasetMeta(dsIdx);
+      /* 找 dataset index */
+      var dsIdx = -1;
+      for (var di = 0; di < chart.data.datasets.length; di++) {
+        if (chart.data.datasets[di].seriesKey === s.key) { dsIdx = di; break; }
+      }
+      if (dsIdx < 0) continue;
+      var meta = chart.getDatasetMeta(dsIdx);
       if (meta && meta.hidden) continue;
       var v = gParsedData.datasets[s.key][idx];
       if (v === null || v === undefined) continue;
+      var yScale = chart.scales[s.axis];
+      if (!yScale) continue;
 
-      var pt = meta.data && meta.data[idx];
-      if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
+      /* 官方 API：返回 canvas 内部像素坐标 */
+      var px = xScale.getPixelForValue(idx);
+      var py = yScale.getPixelForValue(v);
+      if (typeof px !== "number" || typeof py !== "number") continue;
+      if (!isFinite(px) || !isFinite(py)) continue;
 
-      /* 直接存储 Canvas 坐标和显示数据，零转换 */
       gHighlightItems.push({
         key: s.key,
         color: s.color,
         value: v,
         decimals: s.decimals,
         unit: s.unit,
-        ptX: pt.x,
-        ptY: pt.y
+        ptX: px,
+        ptY: py
       });
     }
-
-    /* 按 Y 排序（插件按顺序绘制，从上到下） */
+    /* 按 Y 排序（从上到下绘制） */
     gHighlightItems.sort(function(a, b){ return a.ptY - b.ptY; });
   } catch (err) {
     logError("collectHighlightData", err);
@@ -2186,13 +2195,17 @@ function collectHighlightData(idx) {
 }
 
 
-function moveCrosshairOnly(cssX) {
+function moveCrosshairOnly(canvasX) {
   try {
-    if (!gChartArea || !gCrossLine || !gChart) return;
-    var canvasEl = gChart.canvas;
-    var areaRect = gChartArea.getBoundingClientRect();
-    var offsetX = canvasEl.getBoundingClientRect().left - areaRect.left;
-    gCrossLine.style.left = (cssX + offsetX) + "px";
+    if (!gChart || !gChart.chartArea) return;
+    var ca = gChart.chartArea;
+    var xScale = gChart.scales.x;
+    /* 吸附到当前 idx 的 exact 像素位置，保证竖线与圆点始终重合 */
+    var snapX = (xScale && typeof xScale.getPixelForValue === "function")
+      ? xScale.getPixelForValue(gLastCrossIdx) : canvasX;
+    snapX = Math.max(ca.left, Math.min(snapX, ca.right));
+    gCrossX = snapX;
+    gChart.draw();
   } catch (err) {
     logError("moveCrosshairOnly", err);
   }
@@ -2201,12 +2214,9 @@ function moveCrosshairOnly(cssX) {
 
 function removeCrosshairDetails() {
   try {
-    /* 清除 HTML 标签（兼容） */
-    var tags = gChartArea.querySelectorAll(".price-tag");
-    [].forEach.call(tags, function(el){ el.remove(); });
-    var dots = gChartArea.querySelectorAll(".highlight-dot");
-    [].forEach.call(dots, function(el){ el.remove(); });
-    /* 清除 Canvas 插件数据 */
+    gCrossActive = false;
+    gCrossX = null;
+    gCrossTimeText = "";
     gHighlightItems = [];
     if (gChart) gChart.draw();
   } catch (err) {
@@ -2386,32 +2396,21 @@ function bindEvents() {
 function onMove(cssX) {
   try {
     if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
-
-        var cv = gChart.canvas;
-    var cssW = cv.clientWidth;
-    if (cssW <= 0) return;
-
-    /* clientWidth DPR */
-    var dprX = cv.width / cssW;
     var ca = gChart.chartArea;
 
-    /* X clamp */
-    var chartLeftCss = ca.left / dprX;
-    var chartRightCss = ca.right / dprX;
-    var clampedCssX = Math.max(chartLeftCss, Math.min(cssX, chartRightCss));
-
-    /* 转为 canvas 像素找索引 */
-    var canvasX = clampedCssX * dprX;
-    var clampedCanvasX = Math.max(ca.left, Math.min(canvasX, ca.right));
-    var idx = getIndexAtCanvasX(clampedCanvasX);
+    /* cssX 已是「相对 canvas 左边缘」的 CSS(逻辑)像素。
+       getPixelForValue() / chartArea 也都在同一逻辑像素空间，
+       所以直接比较即可 —— 绝不能乘 dpr（那会把坐标放大 DPR 倍，
+       在高 DPI / 手机上导致竖线跑到手指右侧很远）。 */
+    var clampedX = Math.max(ca.left, Math.min(cssX, ca.right));
+    var idx = getIndexAtCanvasX(clampedX);
     if (idx < 0) return;
 
     if (idx !== gLastCrossIdx) {
       gLastCrossIdx = idx;
-      showCrosshair(clampedCssX, idx);
-      if (gTapHint) gTapHint.style.opacity = "0";
+      showCrosshair(clampedX, idx);
     } else {
-      moveCrosshairOnly(clampedCssX);
+      moveCrosshairOnly(clampedX);
     }
   } catch (err) {
     logError("onMove", err);
@@ -2424,8 +2423,6 @@ function onEnd() {
     clearTimeout(gHideTimer);
     gHideTimer = setTimeout(function(){
       try {
-        gCrossLine.style.display = "none";
-        gClTime.style.display = "none";
         removeCrosshairDetails();
         gLastCrossIdx = -1;
         if (gTapHint) gTapHint.style.opacity = "1";
@@ -2491,8 +2488,6 @@ function init() {
       return;
     }
     gChartArea = document.getElementById("chartArea");
-    gCrossLine = document.getElementById("crossLine");
-    gClTime = document.getElementById("clTime");
     gTapHint = document.getElementById("tapHint");
     gLegendBar = document.getElementById("legendBar");
     if (!gChartArea) { showError("找不到 #chartArea 元素"); return; }
