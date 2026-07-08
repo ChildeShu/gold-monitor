@@ -170,7 +170,7 @@ var highlightOverlayPlugin = {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    /* 2. 底部时间标签 */
+    /* 2. 时间标签（绘制在图表区内部底部，避免被像素比缩放裁切） */
     if (gCrossTimeText) {
       ctx.font = 'bold 10px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif';
       var tw = ctx.measureText(gCrossTimeText).width + 14;
@@ -178,8 +178,8 @@ var highlightOverlayPlugin = {
       var bx = crossX - tw / 2;
       if (bx < ca.left + 2) bx = ca.left + 2;
       if (bx + tw > ca.right - 2) bx = ca.right - tw - 2;
-      var by = ca.bottom + 1;
-      if (by + th > chart.height) by = chart.height - th - 1;
+      var by = ca.bottom - th - 4;
+      if (by < ca.top + 2) by = ca.top + 2;
       ctx.fillStyle = "rgba(212,175,55,0.95)";
       roundRect(ctx, bx, by, tw, th, 4);
       ctx.fill();
@@ -805,14 +805,13 @@ function bindEvents() {
 function onMove(cssX) {
   try {
     if (!gChart || !gChart.chartArea || !gChart.canvas || !gParsedData) return;
-    var cv = gChart.canvas;
-    var dpr = getCanvasDpr();
     var ca = gChart.chartArea;
 
-    /* CSS 像素 -> canvas 内部像素 */
-    var canvasX = cssX * dpr;
-    /* 钳制到 chartArea */
-    var clampedX = Math.max(ca.left, Math.min(canvasX, ca.right));
+    /* cssX 已是「相对 canvas 左边缘」的 CSS(逻辑)像素。
+       getPixelForValue() / chartArea 也都在同一逻辑像素空间，
+       所以直接比较即可 —— 绝不能乘 dpr（那会把坐标放大 DPR 倍，
+       在高 DPI / 手机上导致竖线跑到手指右侧很远）。 */
+    var clampedX = Math.max(ca.left, Math.min(cssX, ca.right));
     var idx = getIndexAtCanvasX(clampedX);
     if (idx < 0) return;
 
