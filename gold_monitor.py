@@ -64,9 +64,19 @@ def load_history():
 
 
 def save_history(history):
-    """保留最近 7 天数据（save-only 模式每 10 分钟一条，约 100 条）"""
-    keys = sorted(history.keys(), reverse=True)[:500]
-    trimmed = {k: history[k] for k in keys}
+    """保留最近约 33 天数据（覆盖一个月视图 + 余量；支持 10 分钟密集采集）"""
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    cutoff = now - timedelta(days=33)
+    trimmed = {}
+    for k, v in history.items():
+        try:
+            kt = datetime.strptime(k, "%Y-%m-%d %H:%M")
+        except Exception:
+            trimmed[k] = v
+            continue
+        if kt >= cutoff:
+            trimmed[k] = v
     trimmed = dict(sorted(trimmed.items()))
     with open(HISTORY_PATH, "w", encoding="utf-8") as f:
         json.dump(trimmed, f, ensure_ascii=False, indent=2)
@@ -763,10 +773,21 @@ def generate_chart_html(output_path=None):
         print("  [图表] 无历史数据，跳过生成")
         return None
     
-    # 取最近7天数据（save-only 模式每10分钟一条，约 7×24×6 = 1008 条，取全部）
+    # 取最近 31 天数据（按日期窗口，而非固定条数）→ 展示完整一个月
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    cutoff = now - timedelta(days=31)
+
+    def _in_window(k):
+        try:
+            return datetime.strptime(k, "%Y-%m-%d %H:%M") >= cutoff
+        except Exception:
+            return True
+
     all_keys = sorted(history.keys())
-    # 取最近 1000 条，保证图表不卡
-    recent_keys = all_keys[-1000:] if len(all_keys) > 1000 else all_keys
+    recent_keys = [k for k in all_keys if _in_window(k)]
+    if not recent_keys:
+        recent_keys = all_keys[-50:]
     recent_data = {k: history[k] for k in recent_keys}
     
     # 读取模板
