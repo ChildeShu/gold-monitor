@@ -465,13 +465,13 @@ function showCrosshair(cssX, idx, dprX, dprY) {
     gClTime.style.display = "block";
 
     /* 更新竖线旁价格标签 —— 传入 chartArea 坐标系的 X */
-    updatePriceTags(areaCssX, idx, dprX, dprY);
+    updatePriceTags(areaCssX, idx);
   } catch (err) {
     logError("showCrosshair", err);
   }
 }
 
-function updatePriceTags(cssX, idx, dprX, dprY) {
+function updatePriceTags(cssX, idx) {
   try {
     if (!gChart || !gChartArea || !gParsedData) return;
     var ca = gChart.chartArea;
@@ -490,6 +490,7 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
     /*
      * 坐标转换：canvas物理像素 → chartArea CSS坐标
+     * 每次重新计算 DPR，避免传入值在手机端高 DPI / 布局变化时不准
      */
     var canvasRect = gChart.canvas.getBoundingClientRect();
     var areaRect = gChartArea.getBoundingClientRect();
@@ -497,6 +498,9 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
     var cOffsetY = canvasRect.top - areaRect.top;
     var areaW = gChartArea.offsetWidth;
     var areaH = gChartArea.offsetHeight;
+    /* 在函数内部重新取 DPR，不依赖外部传入 */
+    var _dprX = gChart.canvas.width / canvasRect.width;
+    var _dprY = gChart.canvas.height / canvasRect.height;
 
     /* 收集所有可见 series 的数据点信息 */
     var items = [];
@@ -512,8 +516,8 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
       var pt = meta.data && meta.data[idx];
       if (!pt || typeof pt.x !== "number" || typeof pt.y !== "number") continue;
 
-      var x = pt.x / dprX + cOffsetX;
-      var y = pt.y / dprY + cOffsetY;
+      var x = pt.x / _dprX + cOffsetX;
+      var y = pt.y / _dprY + cOffsetY;
 
       items.push({key: s.key, color: s.color, value: v, decimals: s.decimals, unit: s.unit, x: x, y: y});
     }
@@ -522,16 +526,6 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
 
     /* 按 Y 从小到大排序 */
     items.sort(function(a, b){ return a.y - b.y; });
-
-    /* 调试日志 */
-    if (window._gDebug !== false) {
-      console.log("[price-tag] area:" + Math.round(areaW) + "x" + Math.round(areaH) +
-        " offset:" + Math.round(cOffsetX) + "," + Math.round(cOffsetY) +
-        " dpr:" + dprX.toFixed(2) + "," + dprY.toFixed(2));
-      for (var di = 0; di < items.length; di++) {
-        console.log("  [" + di + "] " + items[di].key + " => (" + items[di].x.toFixed(1) + "," + items[di].y.toFixed(1) + ")");
-      }
-    }
 
     var DOT_R = 4;
     var MARGIN = 6;
@@ -620,8 +614,11 @@ function updatePriceTags(cssX, idx, dprX, dprY) {
         gChartArea.appendChild(dot);
       }
       dot.style.backgroundColor = it.color;
-      dot.style.left = (it.x - DOT_R) + "px";
-      dot.style.top = (it.y - DOT_R) + "px";
+      /* 圆点边界钳制：保证在 chartArea 绘制区域内 */
+      var dotX = Math.max(MARGIN, Math.min(it.x - DOT_R, areaW - MARGIN - DOT_R * 2));
+      var dotY = Math.max(MARGIN, Math.min(it.y - DOT_R, areaH - MARGIN - DOT_R * 2));
+      dot.style.left = dotX + "px";
+      dot.style.top = dotY + "px";
       dot.style.display = (gHighlightedSeries && gHighlightedSeries !== it.key) ? "none" : "block";
 
       /* 标签边界保护 */
@@ -808,20 +805,21 @@ function bindEvents() {
     } catch (err) { logError("chart touchstart", err); }
   }, {passive:false});
 
-  gChartArea.addEventListener("touchmove", function(e){
+  /* touchmove/touchend 绑在 document 上，防止手指滑出 chartArea 后丢失追踪 */
+  document.addEventListener("touchmove", function(e){
     try {
       if (!gIsDown || !e.touches || e.touches.length === 0) return;
       var cssX = getCssXFromTouch(e);
       if (cssX !== null) scheduleMove(cssX);
       if (e.cancelable) e.preventDefault();
-    } catch (err) { logError("chart touchmove", err); }
+    } catch (err) { logError("document touchmove", err); }
   }, {passive:false});
 
-  gChartArea.addEventListener("touchend", function(e){
-    try { onEnd(); } catch (err) { logError("chart touchend", err); }
+  document.addEventListener("touchend", function(e){
+    try { onEnd(); } catch (err) { logError("document touchend", err); }
   });
-  gChartArea.addEventListener("touchcancel", function(e){
-    try { onEnd(); } catch (err) { logError("chart touchcancel", err); }
+  document.addEventListener("touchcancel", function(e){
+    try { onEnd(); } catch (err) { logError("document touchcancel", err); }
   });
 
   gChartArea.addEventListener("mousedown", function(e){
