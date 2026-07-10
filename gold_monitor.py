@@ -957,12 +957,46 @@ def deploy_chart_to_gh_pages(html_path):
 
 
 def find_previous_key(history, current_key):
-    """在当前 key 之前找最近一条历史记录 key"""
+    """在当前 key 之前找最近一条历史记录 key（兼容旧调用）"""
+    return find_previous_day_last_key(history, current_key)
+
+
+def find_previous_day_last_key(history, current_key):
+    """找前一天最后一次数据（昨日收盘价），用于涨跌对比基准。
+
+    规则：
+      1. 提取 current_key 的日期部分（YYYY-MM-DD）
+      2. 在该日期之前，找最近一个日期的最后一条记录
+      3. 跳过价格异常的脏数据（≤0 或偏离合理范围太远）
+    """
     all_keys = sorted(history.keys())
-    for k in reversed(all_keys):
-        if k < current_key:
+    # 当前日期
+    cur_date = current_key[:10] if len(current_key) >= 10 else current_key.split(" ")[0]
+
+    prev_day_keys = []
+    for k in all_keys:
+        d = k[:10] if len(k) >= 10 else k.split(" ")[0]
+        if d < cur_date:
+            prev_day_keys.append(k)
+
+    if not prev_day_keys:
+        return None
+
+    # 取前一天最后一条
+    target_date = prev_day_keys[-1][:10] if len(prev_day_keys[-1]) >= 10 else prev_day_keys[-1].split(" ")[0]
+    day_keys = [k for k in prev_day_keys if k.startswith(target_date)]
+    if not day_keys:
+        day_keys = [prev_day_keys[-1]]  # fallback: 该日最后一条
+
+    # 从后往前找第一条有效的（跳过零/负值）
+    for k in reversed(day_keys):
+        d = history.get(k, {})
+        bf = d.get("boshi_etf", {})
+        if bf and isinstance(bf.get("price"), (int, float)) and bf["price"] > 0.1:
             return k
-    return None
+
+    # fallback: 该日最后一条（即使可疑也比没有好）
+    return day_keys[-1]
 
 
 def main():
