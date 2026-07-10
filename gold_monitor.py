@@ -79,7 +79,7 @@ def save_history(history):
     trimmed = {}
     for k, v in history.items():
         try:
-            kt = datetime.strptime(k, "%Y-%m-%d %H:%M")
+            kt = datetime.strptime(k, "%Y-%m-%d %H:%M").replace(tzinfo=BEIJING_TZ)
         except Exception:
             trimmed[k] = v
             continue
