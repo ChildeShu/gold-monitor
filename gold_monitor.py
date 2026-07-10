@@ -17,7 +17,7 @@ import json
 import os
 import sys
 import time as _time
-from datetime import datetime, time
+from datetime import datetime, time, timezone, timedelta
 from pathlib import Path
 
 # 修复 Windows 控制台 GBK 编码问题
@@ -32,6 +32,10 @@ import requests
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 HISTORY_PATH = SCRIPT_DIR / "history.json"
+
+# 统一使用北京时间（UTC+8，无夏令时）。服务端(GitHub Actions)与本地(WorkBuddy)
+# 都用它生成 ts_key，避免两边时区不一致导致 history.json 时间戳错乱/顺序颠倒。
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 # ─── API ──────────────────────────────────────────────
 API_EASTMONEY = "https://push2.eastmoney.com/api/qt/stock/get"
@@ -64,9 +68,13 @@ def load_history():
 
 
 def save_history(history):
-    """保留最近约 33 天数据（覆盖一个月视图 + 余量；支持 10 分钟密集采集）"""
+    """保留最近约 33 天数据（覆盖一个月视图 + 余量；支持 10 分钟密集采集）
+
+    注意：history.json 必须按时间戳 key 升序保存——服务端(GitHub Actions)与本地
+    (WorkBuddy) 两边都往这里写数据，任意一侧落盘前都已按 key 排序，合并/变基后才不会乱序。
+    """
     from datetime import datetime, timedelta
-    now = datetime.now()
+    now = datetime.now(BEIJING_TZ)
     cutoff = now - timedelta(days=33)
     trimmed = {}
     for k, v in history.items():
@@ -77,7 +85,7 @@ def save_history(history):
             continue
         if kt >= cutoff:
             trimmed[k] = v
-    trimmed = dict(sorted(trimmed.items()))
+    trimmed = dict(sorted(trimmed.items()))  # 始终按时间先后排序
     with open(HISTORY_PATH, "w", encoding="utf-8") as f:
         json.dump(trimmed, f, ensure_ascii=False, indent=2)
     # 同时保存最新一条快照，供图表页加载时刷新
@@ -1004,7 +1012,7 @@ def main():
     is_test = "--test" in sys.argv
     save_only = "--save-only" in sys.argv
 
-    now = datetime.now()
+    now = datetime.now(BEIJING_TZ)
     # save-only 模式使用精确到分钟的时间戳（如 2026-07-01 19:10）
     # 非 save-only 模式使用整点时间戳（保持原有逻辑）
     if save_only:

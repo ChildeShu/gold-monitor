@@ -1,0 +1,2 @@
+# history.json 由服务端/本地两边同时写入，按时间戳 key 并集合并，避免变基/合并冲突
+history.json merge=jsonunion
