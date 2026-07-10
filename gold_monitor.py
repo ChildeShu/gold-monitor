@@ -1026,7 +1026,7 @@ def main():
         print(f"  [仅保存数据模式]")
     elif is_test:
         print(f"  [测试模式]")
-    elif not is_trading_time(now):
+    elif not force and not is_trading_time(now):
         if not is_silent_hours(now):
             print(f"  ⏸️  非交易时段且非静默时段，跳过")
             print(f"{'='*55}\n")
