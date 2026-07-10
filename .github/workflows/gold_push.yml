@@ -32,13 +32,14 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
-      - name: 恢复历史数据缓存
-        uses: actions/cache@v4
-        with:
-          path: history.json
-          key: gold-history-${{ github.run_id }}
-          restore-keys: |
-            gold-history-
+      - name: 同步最新 history.json
+        run: |
+          # gold_save.yml 每 10 分钟推送 history.json 到 main，直接拉取最新
+          git fetch origin main
+          git checkout origin/main -- history.json
+          echo "history.json synced from origin/main"
+          # 验证最新 key
+          python -c "import json; d=json.load(open('history.json')); ks=sorted(d.keys()); print('latest:', ks[-1], 'au9999:', d[ks[-1]].get('au9999',{}).get('price'))"
 
       - name: 生成配置文件
         run: |
@@ -120,10 +121,3 @@ jobs:
           fi
         env:
           TZ: Asia/Shanghai
-
-      # 第二次 cache save 用新 key 保存更新后的 history.json
-      - name: 更新历史数据缓存
-        uses: actions/cache@v4
-        with:
-          path: history.json
-          key: gold-history-${{ github.run_id }}
