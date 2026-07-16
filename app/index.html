@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,maximum-scale=1.0,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="洛书">
+<meta name="theme-color" content="#0a0a15">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<title>洛书</title>
+<script src="chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #0a0a15;
+  --surface: #111122;
+  --surface2: #181830;
+  --gold: #d4af37;
+  --gold-dim: rgba(212,175,55,0.15);
+  --gold-glow: rgba(212,175,55,0.06);
+  --red: #ff4757;
+  --green: #2ed573;
+  --text: #e8e8f0;
+  --text2: #9999aa;
+  --text3: #666680;
+  --border: rgba(255,255,255,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC','Helvetica Neue',sans-serif;
+  background:var(--bg);color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;
+  position:fixed;top:0;left:0;right:0;bottom:0;
+}
+
+/* ── Header ── */
+.header{
+  flex-shrink:0;height:44px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;background:var(--bg);
+  border-bottom:1px solid var(--border);
+  z-index:100;
+}
+.header-logo{
+  display:flex;align-items:center;gap:8px;
+}
+.header-logo .icon{
+  width:26px;height:26px;border-radius:7px;
+  background:linear-gradient(135deg,#d4af37,#b8961e);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:#0a0a15;font-weight:800;
+}
+.header-title{font-size:15px;font-weight:600;letter-spacing:0.3px;color:#fff}
+.header-time{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+
+/* ── Content ── */
+.content{
+  flex:1 1 auto;min-height:0;
+  overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  scroll-behavior:smooth;
+  position:relative;
+}
+.content::-webkit-scrollbar{width:3px}
+.content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:3px}
+
+.page{display:none;min-height:100%;padding-bottom:70px}
+.page.active{display:block}
+
+/* ── Message Page ── */
+.msg-header-bar{
+  position:sticky;top:0;z-index:10;
+  background:var(--bg);
+  padding:12px 16px 8px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.msg-count{font-size:12px;color:var(--text3)}
+.msg-count strong{color:var(--gold);font-weight:600}
+.msg-actions{display:flex;gap:8px}
+.msg-btn{
+  padding:5px 12px;border-radius:14px;font-size:11px;font-weight:500;
+  background:rgba(255,255,255,0.04);color:var(--text2);border:1px solid transparent;
+  cursor:pointer;transition:all 0.2s;
+}
+.msg-btn:hover{color:var(--text);border-color:rgba(255,255,255,0.1)}
+.msg-btn.active{color:var(--gold);border-color:var(--gold-dim);background:var(--gold-glow)}
+
+.msg-list{padding:0 12px;display:flex;flex-direction:column;gap:8px}
+.msg-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px 16px;
+  transition:all 0.25s;cursor:pointer;
+  position:relative;overflow:hidden;
+  animation:msgIn 0.35s ease backwards;
+}
+.msg-card::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--gold);border-radius:0 2px 2px 0;
+  opacity:0;transition:opacity 0.25s;
+}
+.msg-card:hover{background:var(--surface2);border-color:rgba(255,255,255,0.1)}
+.msg-card:hover::before{opacity:1}
+.msg-card:active{transform:scale(0.985)}
+
+@keyframes msgIn{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+.msg-card-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;
+}
+.msg-tag{
+  font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;
+  letter-spacing:0.3px;
+}
+.msg-tag.broadcast{background:rgba(212,175,55,0.12);color:var(--gold)}
+.msg-tag.alert{background:rgba(255,71,87,0.12);color:var(--red)}
+.msg-tag.info{background:rgba(68,138,255,0.12);color:#448aff}
+
+.msg-time{font-size:10px;color:var(--text3);font-variant-numeric:tabular-nums}
+
+.msg-card-title{
+  font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;
+}
+
+.msg-card-body{
+  font-size:12px;color:var(--text2);line-height:1.6;
+}
+
+/* Gold price inline display in messages */
+.gold-inline{
+  display:inline-flex;align-items:center;gap:4px;margin:0 2px;
+  font-weight:600;
+}
+.gold-inline.up{color:var(--red)}
+.gold-inline.down{color:var(--green)}
+
+/* Expanded message detail */
+.msg-detail{
+  margin-top:10px;padding-top:10px;
+  border-top:1px solid var(--border);
+  display:none;
+}
+.msg-card.expanded .msg-detail{display:block}
+
+.price-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;
+  margin-top:8px;
+}
+.price-item{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:11px;padding:4px 0;
+}
+.price-label{color:var(--text3)}
+.price-value{font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+.price-change{font-size:10px;margin-left:4px}
+.price-change.up{color:var(--red)}
+.price-change.down{color:var(--green)}
+
+/* ── Chart Page ── */
+.chart-container{
+  width:100%;height:100%;
+  position:absolute;top:0;left:0;
+}
+.chart-iframe{
+  width:100%;height:100%;border:none;
+  background:var(--bg);
+}
+.chart-loading{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  text-align:center;color:var(--text3);
+}
+.chart-loading .spinner{
+  width:32px;height:32px;border:2px solid var(--border);
+  border-top-color:var(--gold);border-radius:50%;
+  animation:spin 0.8s linear infinite;
+  margin:0 auto 12px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Bottom Tab Bar ── */
+.tab-bar{
+  flex-shrink:0;height:56px;
+  display:flex;align-items:center;
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  padding-bottom:var(--safe-bottom);
+  z-index:100;
+}
+.tab-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:3px;cursor:pointer;
+  color:var(--text3);transition:all 0.2s;
+  position:relative;
+}
+.tab-item.active{color:var(--gold)}
+.tab-icon{
+  width:22px;height:22px;display:flex;
+  align-items:center;justify-content:center;
+  font-size:18px;transition:transform 0.2s;
+}
+.tab-item.active .tab-icon{transform:scale(1.1)}
+.tab-label{font-size:10px;font-weight:500;letter-spacing:0.3px}
+.tab-badge{
+  position:absolute;top:2px;right:calc(50% - 18px);
+  width:7px;height:7px;background:var(--red);
+  border-radius:50%;display:none;
+}
+.tab-badge.show{display:block}
+
+/* ── Empty State ── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:60px 20px;text-align:center;
+}
+.empty-icon{font-size:48px;margin-bottom:16px;opacity:0.4}
+.empty-title{font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.empty-desc{font-size:12px;color:var(--text3);line-height:1.6;max-width:260px}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-20px);
+  background:var(--surface2);color:var(--text);
+  padding:10px 20px;border-radius:20px;font-size:12px;
+  border:1px solid var(--border);
+  z-index:999;opacity:0;transition:all 0.3s;
+  pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{border-color:var(--green);color:var(--green)}
+
+/* ── Status indicator ── */
+.status-dot{
+  width:6px;height:6px;border-radius:50%;margin-right:4px;
+  display:inline-block;
+}
+.status-dot.connected{background:var(--green);box-shadow:0 0 6px rgba(46,213,115,0.5)}
+.status-dot.error{background:var(--red);box-shadow:0 0 6px rgba(255,71,87,0.5)}
+
+/* ── Settings panel ── */
+.settings-backdrop{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,0.6);z-index:200;
+  display:none;align-items:flex-end;justify-content:center;
+}
+.settings-backdrop.open{display:flex}
+.settings-panel{
+  background:var(--surface);border-radius:16px 16px 0 0;
+  width:100%;max-width:480px;padding:20px 16px 30px;
+  border-top:1px solid var(--border);
+  animation:slideUp 0.3s ease;
+}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.settings-handle{
+  width:32px;height:4px;background:rgba(255,255,255,0.15);
+  border-radius:2px;margin:0 auto 16px;
+}
+.settings-title{font-size:16px;font-weight:600;color:#fff;margin-bottom:16px}
+.settings-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.settings-label{font-size:13px;color:var(--text2)}
+.settings-value{font-size:13px;color:var(--gold);font-weight:500}
+.settings-input{
+  background:var(--bg);border:1px solid var(--border);
+  color:var(--text);padding:8px 12px;border-radius:8px;
+  font-size:12px;width:180px;outline:none;transition:border-color 0.2s;
+}
+.settings-input:focus{border-color:var(--gold)}
+.settings-save{
+  width:100%;padding:12px;margin-top:20px;
+  background:var(--gold);color:#0a0a15;border:none;
+  border-radius:10px;font-size:14px;font-weight:600;
+  cursor:pointer;transition:opacity 0.2s;
+}
+.settings-save:active{opacity:0.8}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">
+    <div class="icon">书</div>
+    <span class="header-title">洛书</span>
+  </div>
+  <div class="header-time" id="headerTime">--:--</div>
+</div>
+
+<!-- Content Area -->
+<div class="content" id="content">
+  <!-- Messages Page -->
+  <div class="page active" id="page-messages">
+    <div class="msg-header-bar">
+      <span class="msg-count">共 <strong id="msgCount">0</strong> 条消息</span>
+      <div class="msg-actions">
+        <button class="msg-btn active" data-filter="all" onclick="filterMessages('all')">全部</button>
+        <button class="msg-btn" data-filter="broadcast" onclick="filterMessages('broadcast')">播报</button>
+        <button class="msg-btn" data-filter="alert" onclick="filterMessages('alert')">提醒</button>
+      </div>
+    </div>
+    <div class="msg-list" id="msgList"></div>
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📨</div>
+      <div class="empty-title">暂无消息</div>
+      <div class="empty-desc">金价播报消息将在这里显示<br>等待下一次推送...</div>
+    </div>
+  </div>
+
+  <!-- Chart Page -->
+  <div class="page" id="page-chart">
+    <div class="chart-container" id="chartContainer">
+      <div class="chart-loading" id="chartLoading">
+        <div class="spinner"></div>
+        <span style="font-size:12px">加载K线图...</span>
+      </div>
+      <iframe class="chart-iframe" id="chartIframe"
+        src="https://ChildeShu.github.io/gold-monitor/"
+        onload="onChartLoaded()"
+        style="display:none">
+      </iframe>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Tab Bar -->
+<div class="tab-bar">
+  <div class="tab-item active" data-tab="messages" onclick="switchTab('messages')">
+    <div class="tab-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+      </svg>
+    </div>
+    <span class="tab-label">消息</span>
+    <div class="tab-badge" id="msgBadge"></div>
+  </div>
+  <div class="tab-item" data-tab="chart" onclick="switchTab('chart')">
+    <div class="tab-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <span class="tab-label">K线</span>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div class="settings-backdrop" id="settingsBackdrop" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-panel">
+    <div class="settings-handle"></div>
+    <div class="settings-title">设置</div>
+    <div class="settings-row">
+      <span class="settings-label">图表地址</span>
+      <span class="settings-value" id="chartUrlLabel">GitHub Pages</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">自动刷新</span>
+      <span class="settings-value" id="refreshLabel">30秒</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">消息存储</span>
+      <span class="settings-value" id="storageLabel">本地 JSON</span>
+    </div>
+    <div class="settings-row" style="border:none">
+      <span class="settings-label">通知权限</span>
+      <span class="settings-value" id="notifLabel" style="cursor:pointer" onclick="requestNotification()">
+        点击开启
+      </span>
+    </div>
+    <button class="settings-save" onclick="closeSettings()">完成</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ==================== App State ====================
+const APP = {
+  messages: [],
+  activeTab: 'messages',
+  messageFilter: 'all',
+  lastMessageId: null,
+  pollingInterval: null,
+  notifEnabled: false,
+};
+
+// ==================== Time ====================
+function updateTime() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  document.getElementById('headerTime').textContent = h + ':' + m;
+}
+updateTime();
+setInterval(updateTime, 10000);
+
+// ==================== Tab Switching ====================
+function switchTab(tab) {
+  APP.activeTab = tab;
+  document.querySelectorAll('.tab-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.getElementById('page-messages').classList.toggle('active', tab === 'messages');
+  document.getElementById('page-chart').classList.toggle('active', tab === 'chart');
+
+  if (tab === 'chart') {
+    const iframe = document.getElementById('chartIframe');
+    if (iframe.style.display === 'none') {
+      iframe.style.display = 'block';
+    }
+  }
+}
+
+// ==================== Messages ====================
+async function loadMessages() {
+  try {
+    const resp = await fetch('messages.json?_=' + Date.now());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (data && data.length > 0) {
+      APP.messages = data.sort((a, b) => (b.time||'').localeCompare(a.time||''));
+      // Check for new messages
+      if (APP.lastMessageId && APP.messages.length > 0) {
+        const latestId = APP.messages[0].id || APP.messages[0].time;
+        if (latestId !== APP.lastMessageId) {
+          showNotification(APP.messages[0]);
+        }
+      }
+      if (APP.messages.length > 0) {
+        APP.lastMessageId = APP.messages[0].id || APP.messages[0].time;
+      }
+    }
+    renderMessages();
+    updateBadge();
+  } catch (e) {
+    console.warn('Message load failed:', e.message);
+    renderMessages();
+  }
+}
+
+function renderMessages() {
+  const list = document.getElementById('msgList');
+  const empty = document.getElementById('emptyState');
+  let filtered = APP.messages;
+
+  if (APP.messageFilter !== 'all') {
+    filtered = APP.messages.filter(m => (m.tag || 'broadcast') === APP.messageFilter);
+  }
+
+  document.getElementById('msgCount').textContent = filtered.length;
+
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'flex';
+    if (APP.messages.length > 0) {
+      empty.querySelector('.empty-title').textContent = '无匹配消息';
+      empty.querySelector('.empty-desc').textContent = '尝试切换筛选条件';
+    } else {
+      empty.querySelector('.empty-title').textContent = '暂无消息';
+      empty.querySelector('.empty-desc').textContent = '金价播报消息将在这里显示\n等待下一次推送...';
+    }
+    return;
+  }
+
+  empty.style.display = 'none';
+  list.innerHTML = filtered.map((msg, i) => {
+    const tag = msg.tag || 'broadcast';
+    const tagText = tag === 'broadcast' ? '定时播报' : tag === 'alert' ? '价格提醒' : '系统通知';
+    const time = formatTime(msg.time || msg.ts);
+    const title = msg.title || '金价播报';
+    const body = msg.body || msg.content || '';
+    const priceData = msg.priceData || null;
+
+    let bodyHtml = '';
+    if (priceData) {
+      // Rich price display
+      bodyHtml += '<div class="price-grid">';
+      if (priceData.au9999) {
+        const au = priceData.au9999;
+        const changeCls = au.change > 0 ? 'up' : au.change < 0 ? 'down' : '';
+        bodyHtml += '<div class="price-item"><span class="price-label">AU9999</span><span><span class="price-value">¥' + au.price.toFixed(2) + '</span>';
+        if (au.change !== undefined && au.change !== null) {
+          bodyHtml += '<span class="price-change ' + changeCls + '">' + (au.change>0?'+':'') + au.change.toFixed(2) + '</span>';
+        }
+        bodyHtml += '</span></div>';
+      }
+      if (priceData.intl_spot) {
+        const isp = priceData.intl_spot;
+        bodyHtml += '<div class="price-item"><span class="price-label">国际金价</span><span class="price-value">$' + isp.intl_price.toFixed(2) + '</span></div>';
+      }
+      if (priceData.boshi_etf) {
+        const etf = priceData.boshi_etf;
+        const changeCls = etf.change > 0 ? 'up' : etf.change < 0 ? 'down' : '';
+        bodyHtml += '<div class="price-item"><span class="price-label">博时黄金ETF</span><span><span class="price-value">¥' + etf.price.toFixed(3) + '</span>';
+        if (etf.change !== undefined && etf.change !== null) {
+          bodyHtml += '<span class="price-change ' + changeCls + '">' + (etf.change>0?'+':'') + etf.change.toFixed(3) + '</span>';
+        }
+        bodyHtml += '</span></div>';
+      }
+      if (priceData.brands) {
+        bodyHtml += '<div class="price-item"><span class="price-label">品牌金价</span><span class="price-value">' + priceData.brands + '</span></div>';
+      }
+      bodyHtml += '</div>';
+    } else if (body) {
+      // Try to extract price info from HTML body
+      bodyHtml = extractPriceFromBody(body);
+    }
+
+    return '<div class="msg-card" onclick="toggleCard(this)" style="animation-delay:' + (i*0.03) + 's">' +
+      '<div class="msg-card-header">' +
+        '<span class="msg-tag ' + tag + '">' + tagText + '</span>' +
+        '<span class="msg-time">' + time + '</span>' +
+      '</div>' +
+      '<div class="msg-card-title">' + escapeHtml(title) + '</div>' +
+      (bodyHtml ? '<div class="msg-card-body">' + bodyHtml + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function extractPriceFromBody(html) {
+  // Simply strip HTML and show as plain text preview
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const text = div.textContent || div.innerText || '';
+  if (text.length > 120) return text.substring(0, 120) + '...';
+  return text;
+}
+
+function toggleCard(card) {
+  card.classList.toggle('expanded');
+}
+
+function filterMessages(filter) {
+  APP.messageFilter = filter;
+  document.querySelectorAll('.msg-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+  renderMessages();
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  // Handle various formats
+  const d = new Date(ts);
+  if (!isNaN(d.getTime())) {
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const h = String(d.getHours()).padStart(2,'0');
+    const m = String(d.getMinutes()).padStart(2,'0');
+    if (isToday) return '今天 ' + h + ':' + m;
+    const M = String(d.getMonth()+1).padStart(2,'0');
+    const D = String(d.getDate()).padStart(2,'0');
+    return M + '/' + D + ' ' + h + ':' + m;
+  }
+  // Try parsing YYYY-MM-DD HH:mm
+  const match = ts.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  if (match) {
+    const M = parseInt(match[2]); const D = parseInt(match[3]);
+    return M + '/' + D + ' ' + match[4] + ':' + match[5];
+  }
+  return ts;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function updateBadge() {
+  // Show badge if there are new messages (within last 5 min)
+  const badge = document.getElementById('msgBadge');
+  const now = new Date();
+  const recent = APP.messages.find(m => {
+    const d = new Date(m.time || m.ts);
+    return !isNaN(d.getTime()) && (now - d) < 5 * 60 * 1000;
+  });
+  badge.classList.toggle('show', !!recent && APP.activeTab !== 'messages');
+}
+
+// ==================== Chart ====================
+function onChartLoaded() {
+  document.getElementById('chartLoading').style.display = 'none';
+  document.getElementById('chartIframe').style.display = 'block';
+}
+
+// ==================== Notifications ====================
+async function requestNotification() {
+  if (!('Notification' in window)) {
+    showToast('浏览器不支持通知', false);
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    APP.notifEnabled = true;
+    document.getElementById('notifLabel').textContent = '已开启 ✓';
+    document.getElementById('notifLabel').style.color = 'var(--green)';
+    showToast('通知已开启', true);
+  } else {
+    document.getElementById('notifLabel').textContent = '已拒绝 ✗';
+    showToast('通知权限被拒绝', false);
+  }
+}
+
+function showNotification(msg) {
+  if (!APP.notifEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const title = msg.title || '金价播报';
+  const body = msg.body || '';
+  const n = new Notification(title, {
+    body: body.replace(/<[^>]*>/g, '').substring(0, 200),
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23d4af37"/><text x="50" y="65" text-anchor="middle" fill="%230a0a15" font-size="45" font-weight="bold">G</text></svg>',
+    tag: 'gold-monitor',
+  });
+  n.onclick = () => {
+    window.focus();
+    switchTab('messages');
+    n.close();
+  };
+  setTimeout(() => n.close(), 8000);
+}
+
+// ==================== Toast ====================
+let toastTimer;
+function showToast(msg, success) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (success ? 'success' : '') + ' show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = 'toast', 2000);
+}
+
+// ==================== Settings ====================
+function openSettings() {
+  document.getElementById('settingsBackdrop').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settingsBackdrop').classList.remove('open');
+}
+
+// ==================== Init ====================
+function init() {
+  // Check existing notification permission
+  if ('Notification' in window && Notification.permission === 'granted') {
+    APP.notifEnabled = true;
+    document.getElementById('notifLabel').textContent = '已开启 ✓';
+    document.getElementById('notifLabel').style.color = 'var(--green)';
+  }
+
+  // Load messages
+  loadMessages();
+
+  // Poll for new messages
+  APP.pollingInterval = setInterval(loadMessages, 30000);
+
+  // Header clock icon = settings
+  document.querySelector('.header-logo').style.cursor = 'pointer';
+  document.querySelector('.header-logo').onclick = openSettings;
+
+  // Initial badge check
+  setTimeout(updateBadge, 1000);
+
+  // Ensure render even if fetch fails
+  renderMessages();
+}
+
+init();
+
+// ==================== Handle window focus ====================
+window.addEventListener('focus', () => {
+  loadMessages();
+  updateBadge();
+});
+
+// ==================== Also try WxPusher API directly ====================
+async function loadFromWxPusher(appToken, uid) {
+  try {
+    // WxPusher doesn't have a direct message history API, but we can query users
+    const resp = await fetch('https://wxpusher.zjiecode.com/api/fun/wxuser/v2?' +
+      'appToken=' + encodeURIComponent(appToken) +
+      '&uid=' + encodeURIComponent(uid) +
+      '&page=1&pageSize=1');
+    const data = await resp.json();
+    if (data.code === 1000) {
+      console.log('WxPusher connected:', data);
+    }
+  } catch(e) {
+    console.warn('WxPusher connection check failed:', e.message);
+  }
+}
+
+// ==================== Service Worker (PWA) ====================
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => console.log('[SW] registered'))
+    .catch(err => console.warn('[SW] failed:', err));
+}
+
+// ==================== PWA Install Prompt ====================
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  console.log('[PWA] Install available');
+});
+</script>
+
+</body>
+</html>
