@@ -401,10 +401,51 @@ def fetch_brand_gold():
 
 
 # ═══════════════════════════════════════════════════════
+#  消息存储（供 App 页面读取历史推送）
+# ═══════════════════════════════════════════════════════
+
+APP_MESSAGES_FILE = SCRIPT_DIR / "app" / "messages.json"
+
+
+def save_message_to_app_log(title, content, tag="broadcast", price_data=None):
+    """保存已发送的消息到 app/messages.json，供 App 页面展示。"""
+    messages = []
+    if APP_MESSAGES_FILE.exists():
+        try:
+            with open(APP_MESSAGES_FILE, "r", encoding="utf-8") as f:
+                messages = json.load(f)
+        except Exception:
+            messages = []
+
+    msg = {
+        "id": f"msg-{datetime.now(BEIJING_TZ).strftime('%Y%m%d-%H%M%S')}",
+        "time": datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "tag": tag,
+        "title": title,
+        "body": content,
+    }
+    if price_data:
+        msg["priceData"] = price_data
+
+    messages.append(msg)
+    # 最多保留 500 条
+    if len(messages) > 500:
+        messages = messages[-500:]
+
+    try:
+        APP_MESSAGES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(APP_MESSAGES_FILE, "w", encoding="utf-8") as f:
+            json.dump(messages, f, ensure_ascii=False, indent=2)
+        print(f"[MSG] 消息已保存到本地 (共 {len(messages)} 条)")
+    except Exception as e:
+        print(f"[WARN] 消息保存失败: {e}")
+
+
+# ═══════════════════════════════════════════════════════
 #  通知
 # ═══════════════════════════════════════════════════════
 
-def send_notification(config, title, content):
+def send_notification(config, title, content, tag="broadcast", price_data=None):
     cfg = config.get("notification", {})
     ntype = cfg.get("type", "wxpusher")
 
@@ -431,6 +472,7 @@ def send_notification(config, title, content):
             result = r.json()
             if result.get("code") == 1000:
                 print("[OK] WxPusher 推送成功")
+                save_message_to_app_log(title, content, tag, price_data)
                 return True
             print(f"[ERROR] WxPusher: {result}")
             return False
@@ -452,6 +494,7 @@ def send_notification(config, title, content):
             result = r.json()
             if result.get("code") == 200:
                 print("[OK] PushPlus 推送成功")
+                save_message_to_app_log(title, content, tag, price_data)
                 return True
             print(f"[ERROR] PushPlus: {result}")
             return False
