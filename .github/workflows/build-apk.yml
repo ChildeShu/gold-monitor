@@ -1,0 +1,47 @@
+name: Build APK (洛书)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ build-apk ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept SDK licenses & install platform/build-tools
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Build debug APK (Gradle 8.5, no cache)
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.5
+          build-root-directory: android-app
+          arguments: assembleDebug --no-daemon --stacktrace --info
+          cache-disabled: true
+
+      - name: Publish APK to GitHub Release (public download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-latest
+          name: 洛书 App (latest)
+          files: android-app/app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
