@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="洛书">
 <meta name="theme-color" content="#0a0a15">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" type="image/png" href="/icon-192.png">
 <title>洛书</title>
 <script src="chart.umd.min.js"></script>
@@ -53,9 +53,11 @@ body{
 }
 .header-logo .icon{
   width:26px;height:26px;border-radius:7px;
-  background:linear-gradient(135deg,#d4af37,#b8961e);
+  overflow:hidden;
   display:flex;align-items:center;justify-content:center;
-  font-size:14px;color:#0a0a15;font-weight:800;
+}
+.header-logo .icon img{
+  width:100%;height:100%;object-fit:cover;
 }
 .header-title{font-size:15px;font-weight:600;letter-spacing:0.3px;color:#fff}
 .header-time{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
@@ -292,8 +294,8 @@ body{
 
 <!-- Header -->
 <div class="header">
-  <div class="header-logo">
-    <div class="icon">书</div>
+    <div class="header-logo">
+    <div class="icon"><img src="icon-192.png" alt="logo"></div>
     <span class="header-title">洛书</span>
   </div>
   <div class="header-time" id="headerTime">--:--</div>
@@ -425,11 +427,15 @@ function switchTab(tab) {
 // ==================== Messages ====================
 async function loadMessages() {
   try {
-    const resp = await fetch('messages.json?_=' + Date.now());
+    const resp = await fetch('/api/messages?_=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     if (data && data.length > 0) {
-      APP.messages = data.sort((a, b) => (b.time||'').localeCompare(a.time||''));
+      APP.messages = data.sort((a, b) => {
+        const ta = a.time || a.ts || '';
+        const tb = b.time || b.ts || '';
+        return tb.localeCompare(ta);
+      });
       // Check for new messages
       if (APP.lastMessageId && APP.messages.length > 0) {
         const latestId = APP.messages[0].id || APP.messages[0].time;
@@ -445,7 +451,15 @@ async function loadMessages() {
     updateBadge();
   } catch (e) {
     console.warn('Message load failed:', e.message);
-    renderMessages();
+    // Try alternate path
+    try {
+      const resp2 = await fetch('messages.json?_=' + Date.now());
+      if (resp2.ok) {
+        const data = await resp2.json();
+        APP.messages = data.sort((a, b) => (b.time||'').localeCompare(a.time||''));
+        renderMessages();
+      }
+    } catch(e2) { renderMessages(); }
   }
 }
 
@@ -699,7 +713,7 @@ async function loadFromWxPusher(appToken, uid) {
 
 // ==================== Service Worker (PWA) ====================
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js')
+  navigator.serviceWorker.register('./sw.js')
     .then(reg => console.log('[SW] registered'))
     .catch(err => console.warn('[SW] failed:', err));
 }

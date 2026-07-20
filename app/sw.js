@@ -1,11 +1,11 @@
 const CACHE_NAME = 'luoshu-v1';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/messages.json'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
+  './messages.json'
 ];
 
 self.addEventListener('install', (e) => {
