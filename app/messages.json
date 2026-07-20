@@ -6,9 +6,18 @@
     "title": "金价收盘播报",
     "body": "AU9999: ¥902.02/g | 国际金价: $4,037.92/盎司 | 博时黄金ETF: ¥8.342",
     "priceData": {
-      "au9999": {"price": 902.02, "change": null},
-      "intl_spot": {"intl_price": 4037.92, "cny_price": 877.04},
-      "boshi_etf": {"price": 8.342, "change": -0.006},
+      "au9999": {
+        "price": 902.02,
+        "change": null
+      },
+      "intl_spot": {
+        "intl_price": 4037.92,
+        "cny_price": 877.04
+      },
+      "boshi_etf": {
+        "price": 8.342,
+        "change": -0.006
+      },
       "brands": "周大福 ¥892"
     }
   },
@@ -19,9 +28,18 @@
     "title": "金价午盘播报",
     "body": "AU9999: ¥901.50/g ↑ | 国际金价: $4,035.20/盎司 | 博时黄金ETF: ¥8.338",
     "priceData": {
-      "au9999": {"price": 901.50, "change": 0.8},
-      "intl_spot": {"intl_price": 4035.20, "cny_price": 876.50},
-      "boshi_etf": {"price": 8.338, "change": 0.002},
+      "au9999": {
+        "price": 901.5,
+        "change": 0.8
+      },
+      "intl_spot": {
+        "intl_price": 4035.2,
+        "cny_price": 876.5
+      },
+      "boshi_etf": {
+        "price": 8.338,
+        "change": 0.002
+      },
       "brands": "周大福 ¥892"
     }
   },
@@ -32,9 +50,18 @@
     "title": "金价早盘播报",
     "body": "AU9999: ¥900.70/g ↓ | 国际金价: $4,033.50/盎司 | 博时黄金ETF: ¥8.335",
     "priceData": {
-      "au9999": {"price": 900.70, "change": -0.5},
-      "intl_spot": {"intl_price": 4033.50, "cny_price": 876.10},
-      "boshi_etf": {"price": 8.335, "change": -0.003},
+      "au9999": {
+        "price": 900.7,
+        "change": -0.5
+      },
+      "intl_spot": {
+        "intl_price": 4033.5,
+        "cny_price": 876.1
+      },
+      "boshi_etf": {
+        "price": 8.335,
+        "change": -0.003
+      },
       "brands": "周大福 ¥892"
     }
   },
@@ -45,10 +72,41 @@
     "title": "金价早盘开盘",
     "body": "AU9999: ¥901.20/g | 国际金价: $4,032.00/盎司 | 博时黄金ETF: ¥8.348",
     "priceData": {
-      "au9999": {"price": 901.20, "change": null},
-      "intl_spot": {"intl_price": 4032.00, "cny_price": 876.00},
-      "boshi_etf": {"price": 8.348, "change": null},
+      "au9999": {
+        "price": 901.2,
+        "change": null
+      },
+      "intl_spot": {
+        "intl_price": 4032,
+        "cny_price": 876
+      },
+      "boshi_etf": {
+        "price": 8.348,
+        "change": null
+      },
       "brands": "周大福 ¥892"
+    }
+  },
+  {
+    "id": "msg-20260720-1633",
+    "time": "2026-07-20 16:33",
+    "tag": "broadcast",
+    "title": "金价收盘播报",
+    "body": "AU9999: ¥904.30/g | 国际金价: $4,020.96/盎司 | 博时黄金ETF: ¥8.302",
+    "priceData": {
+      "au9999": {
+        "price": 904.3,
+        "change": null
+      },
+      "intl_spot": {
+        "intl_price": 4020.96,
+        "cny_price": 874.95
+      },
+      "boshi_etf": {
+        "price": 8.302,
+        "change": 0.012
+      },
+      "brands": "周大福 ¥1222"
     }
   }
 ]
