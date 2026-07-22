@@ -8,3 +8,6 @@ chart_test.html
 chart.html
 .env
 
+.apk_inspect/
+.manifest_work/
+.verify_built/

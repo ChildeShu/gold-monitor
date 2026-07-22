@@ -1,0 +1,1 @@
+[{"relation": ["delegate_permission/common.handle_all_urls"], "target": {"namespace": "android_app", "package_name": "com.goldmonitor.luoshu", "sha256_cert_fingerprints": ["13:67:F3:87:DF:4D:81:AF:E7:4F:D5:1B:81:94:F8:6B:DF:C3:61:C2:1C:8C:02:32:50:F4:9A:1F:7B:32:B8:B7"]}}]
