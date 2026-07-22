@@ -41,6 +41,25 @@ body{
   position:fixed;top:0;left:0;right:0;bottom:0;
 }
 
+/* ── Minimal Top Bar (阿福 style) ── */
+.topbar{
+  flex-shrink:0;
+  height:48px;
+  display:flex;align-items:center;justify-content:center;
+  padding:0 16px;
+  background:var(--bg);
+  /* notch safe */
+  padding-top:var(--safe-top);
+  z-index:100;
+}
+.topbar-title{
+  font-size:17px;font-weight:700;letter-spacing:1px;color:#fff;
+}
+.topbar-time{
+  position:absolute;right:16px;
+  font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;
+}
+
 /* ── Content ── */
 .content{
   flex:1 1 auto;min-height:0;
@@ -48,7 +67,6 @@ body{
   -webkit-overflow-scrolling:touch;
   scroll-behavior:smooth;
   position:relative;
-  padding-top:var(--safe-top);
 }
 .content::-webkit-scrollbar{width:3px}
 .content::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:3px}
@@ -218,6 +236,12 @@ body{
 </head>
 <body>
 
+<!-- Minimal Top Bar -->
+<div class="topbar">
+  <span class="topbar-title">洛书</span>
+  <span class="topbar-time" id="headerTime">--:--</span>
+</div>
+
 <!-- Content Area -->
 <div class="content" id="content">
   <!-- Messages Page -->
@@ -295,6 +319,15 @@ const APP = {
   notifEnabled: false,
 };
 
+// ==================== Time ====================
+function updateTime() {
+  const now = new Date();
+  document.getElementById('headerTime').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+updateTime();
+setInterval(updateTime, 10000);
+
 // ==================== Tab Switching ====================
 function switchTab(tab) {
   APP.activeTab = tab;
@@ -306,6 +339,15 @@ function switchTab(tab) {
     if (iframe.style.display === 'none') iframe.style.display = 'block';
   }
 }
+
+// Long-press topbar title to open settings
+document.querySelector('.topbar').addEventListener('contextmenu', e => { e.preventDefault(); openSettings(); });
+let touchTimer;
+document.querySelector('.topbar').addEventListener('touchstart', () => {
+  touchTimer = setTimeout(openSettings, 600);
+}, {passive:true});
+document.querySelector('.topbar').addEventListener('touchend', () => clearTimeout(touchTimer));
+document.querySelector('.topbar').addEventListener('touchmove', () => clearTimeout(touchTimer));
 
 // ==================== Messages ====================
 async function loadMessages() {

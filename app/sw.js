@@ -1,4 +1,4 @@
-const CACHE_NAME = 'luoshu-v3';
+const CACHE_NAME = 'luoshu-v2';
 const STATIC_ASSETS = [
   './',
   './index.html',
