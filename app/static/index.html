@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="洛书">
 <meta name="theme-color" content="#0a0a15">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
-<link rel="icon" type="image/png" href="/icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <title>洛书</title>
 <script src="chart.umd.min.js"></script>
 <style>
@@ -387,6 +387,42 @@ body{
 <div class="toast" id="toast"></div>
 
 <script>
+// ==================== 内嵌默认消息数据 ====================
+const DEFAULT_MESSAGES = [
+  {
+    id: "msg-20260716-1530",
+    time: "2026-07-16 15:30",
+    tag: "broadcast",
+    title: "金价收盘播报",
+    body: "AU9999: ¥902.02/g | 国际金价: $4,037.92/盎司 | 博时黄金ETF: ¥8.342",
+    priceData: { au9999: {price: 902.02, change: null}, intl_spot: {intl_price: 4037.92, cny_price: 877.04}, boshi_etf: {price: 8.342, change: -0.006}, brands: "周大福 ¥892" }
+  },
+  {
+    id: "msg-20260716-1400",
+    time: "2026-07-16 14:00",
+    tag: "broadcast",
+    title: "金价午盘播报",
+    body: "AU9999: ¥901.50/g ↑ | 国际金价: $4,035.20/盎司 | 博时黄金ETF: ¥8.338",
+    priceData: { au9999: {price: 901.50, change: 0.8}, intl_spot: {intl_price: 4035.20, cny_price: 876.50}, boshi_etf: {price: 8.338, change: 0.002}, brands: "周大福 ¥892" }
+  },
+  {
+    id: "msg-20260716-1100",
+    time: "2026-07-16 11:00",
+    tag: "broadcast",
+    title: "金价早盘播报",
+    body: "AU9999: ¥900.70/g ↓ | 国际金价: $4,033.50/盎司 | 博时黄金ETF: ¥8.335",
+    priceData: { au9999: {price: 900.70, change: -0.5}, intl_spot: {intl_price: 4033.50, cny_price: 876.10}, boshi_etf: {price: 8.335, change: -0.003}, brands: "周大福 ¥892" }
+  },
+  {
+    id: "msg-20260716-0900",
+    time: "2026-07-16 09:00",
+    tag: "broadcast",
+    title: "金价早盘开盘",
+    body: "AU9999: ¥901.20/g | 国际金价: $4,032.00/盎司 | 博时黄金ETF: ¥8.348",
+    priceData: { au9999: {price: 901.20, change: null}, intl_spot: {intl_price: 4032.00, cny_price: 876.00}, boshi_etf: {price: 8.348, change: null}, brands: "周大福 ¥892" }
+  }
+];
+
 // ==================== App State ====================
 const APP = {
   messages: [],
@@ -396,6 +432,57 @@ const APP = {
   pollingInterval: null,
   notifEnabled: false,
 };
+
+// ==================== 消息持久化 (localStorage) ====================
+function saveMessagesToStorage() {
+  try {
+    localStorage.setItem('luoshu_messages', JSON.stringify(APP.messages));
+  } catch(e) {}
+}
+
+function loadMessagesFromStorage() {
+  try {
+    const stored = localStorage.getItem('luoshu_messages');
+    if (stored) {
+      const data = JSON.parse(stored);
+      if (data && Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch(e) {}
+  return null;
+}
+
+// ==================== 接收新消息（供外部调用 / URL参数注入） ====================
+function addMessage(msg) {
+  if (!msg.id) msg.id = 'msg-' + Date.now();
+  if (!msg.time) msg.time = new Date().toISOString().replace('T',' ').substring(0,16);
+  if (!msg.tag) msg.tag = 'broadcast';
+
+  APP.messages.unshift(msg); // 最新消息放最前面
+  saveMessagesToStorage();
+  renderMessages();
+  updateBadge();
+
+  // 桌面通知
+  showNotification(msg);
+
+  console.log('[洛书] 新消息已接收:', msg.title || msg.body);
+}
+
+// 解析URL中的新消息参数 ?msg={"title":"...","body":"..."}
+function checkUrlForNewMessage() {
+  const params = new URLSearchParams(window.location.search);
+  const msgParam = params.get('msg');
+  if (msgParam) {
+    try {
+      const newMsg = JSON.parse(decodeURIComponent(msgParam));
+      addMessage(newMsg);
+      // 清除URL参数，避免重复注入
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch(e) {}
+  }
+}
 
 // ==================== Time ====================
 function updateTime() {
@@ -424,29 +511,51 @@ function switchTab(tab) {
 
 // ==================== Messages ====================
 async function loadMessages() {
-  try {
-    const resp = await fetch('messages.json?_=' + Date.now());
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-    if (data && data.length > 0) {
-      APP.messages = data.sort((a, b) => (b.time||'').localeCompare(a.time||''));
-      // Check for new messages
-      if (APP.lastMessageId && APP.messages.length > 0) {
-        const latestId = APP.messages[0].id || APP.messages[0].time;
-        if (latestId !== APP.lastMessageId) {
-          showNotification(APP.messages[0]);
+  let loaded = false;
+
+  // 策略1: 从 localStorage 读取
+  const stored = loadMessagesFromStorage();
+  if (stored) {
+    APP.messages = stored.sort((a, b) => (b.time||'').localeCompare(a.time||''));
+    loaded = true;
+    console.log('[洛书] 从本地缓存加载', APP.messages.length, '条消息');
+  }
+
+  // 策略2: 尝试从 messages.json 文件获取（在线模式）
+  if (!loaded) {
+    try {
+      const resp = await fetch('messages.json?_=' + Date.now());
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.length > 0) {
+          APP.messages = data.sort((a, b) => (b.time||'').localeCompare(a.time||''));
+          saveMessagesToStorage(); // 缓存到localStorage
+          loaded = true;
+          console.log('[洛书] 从文件加载', APP.messages.length, '条消息');
         }
       }
-      if (APP.messages.length > 0) {
-        APP.lastMessageId = APP.messages[0].id || APP.messages[0].time;
-      }
+    } catch(e) {
+      // file:// 协议下 fetch 可能失败，这是正常的
     }
-    renderMessages();
-    updateBadge();
-  } catch (e) {
-    console.warn('Message load failed:', e.message);
-    renderMessages();
   }
+
+  // 策略3: 使用内嵌默认数据
+  if (!loaded && DEFAULT_MESSAGES.length > 0) {
+    APP.messages = [...DEFAULT_MESSAGES].sort((a, b) => (b.time||'').localeCompare(a.time||''));
+    saveMessagesToStorage(); // 缓存到localStorage
+    loaded = true;
+    console.log('[洛书] 加载内置默认消息', APP.messages.length, '条');
+  }
+
+  // 更新最后消息ID（用于检测新消息）
+  if (APP.messages.length > 0) {
+    APP.lastMessageId = APP.messages[0].id || APP.messages[0].time;
+  }
+
+  renderMessages();
+  updateBadge();
+
+  return loaded;
 }
 
 function renderMessages() {
@@ -647,7 +756,10 @@ function closeSettings() {
 }
 
 // ==================== Init ====================
-function init() {
+async function init() {
+  // 检查URL中是否有新消息注入
+  checkUrlForNewMessage();
+
   // Check existing notification permission
   if ('Notification' in window && Notification.permission === 'granted') {
     APP.notifEnabled = true;
@@ -655,11 +767,25 @@ function init() {
     document.getElementById('notifLabel').style.color = 'var(--green)';
   }
 
-  // Load messages
-  loadMessages();
+  // Load messages (三级策略: localStorage → fetch → 内嵌默认)
+  await loadMessages();
 
-  // Poll for new messages
-  APP.pollingInterval = setInterval(loadMessages, 30000);
+  // Poll for new messages（仅在线模式下有效）
+  APP.pollingInterval = setInterval(async function() {
+    try {
+      const resp = await fetch('messages.json?_=' + Date.now());
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data && data.length > 0) {
+        const latestId = data[0].id || data[0].time;
+        if (latestId !== APP.lastMessageId) {
+          // 有新消息，添加到列表
+          const newMsgs = data.filter(m => !APP.messages.find(am => (am.id||am.time) === (m.id||m.time)));
+          newMsgs.forEach(m => addMessage(m));
+        }
+      }
+    } catch(e) {}
+  }, 30000);
 
   // Header clock icon = settings
   document.querySelector('.header-logo').style.cursor = 'pointer';
@@ -668,7 +794,7 @@ function init() {
   // Initial badge check
   setTimeout(updateBadge, 1000);
 
-  // Ensure render even if fetch fails
+  // 确保即使加载失败也渲染
   renderMessages();
 }
 
@@ -699,7 +825,7 @@ async function loadFromWxPusher(appToken, uid) {
 
 // ==================== Service Worker (PWA) ====================
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js')
+  navigator.serviceWorker.register('sw.js')
     .then(reg => console.log('[SW] registered'))
     .catch(err => console.warn('[SW] failed:', err));
 }

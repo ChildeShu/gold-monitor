@@ -33,6 +33,38 @@ SCRIPT_DIR = Path(__file__).parent
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 HISTORY_PATH = SCRIPT_DIR / "history.json"
 
+
+def _load_dotenv_local():
+    """从脚本同目录的 .env 文件加载环境变量（若存在）。
+
+    仅用于本地 WorkBuddy 自动化：把 WxPusher 凭据以环境变量形式注入，
+    避免在 config.json / 代码里明文存储 token。无 python-dotenv 依赖，
+    纯手写解析，兼容 KEY=VALUE 与 KEY='VALUE' / KEY="VALUE" 形式。
+    """
+    env_file = SCRIPT_DIR / ".env"
+    if not env_file.exists():
+        return
+    try:
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip()
+                # 去掉引号
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                    v = v[1:-1]
+                # 不覆盖已存在的环境变量（进程注入优先）
+                if k not in os.environ:
+                    os.environ[k] = v
+        print("[ENV] 已从 .env 加载本地环境变量")
+    except Exception as e:
+        print(f"[WARN] .env 加载失败: {e}")
+
+
+_load_dotenv_local()
+
 # 统一使用北京时间（UTC+8，无夏令时）。服务端(GitHub Actions)与本地(WorkBuddy)
 # 都用它生成 ts_key，避免两边时区不一致导致 history.json 时间戳错乱/顺序颠倒。
 BEIJING_TZ = timezone(timedelta(hours=8))
@@ -449,13 +481,58 @@ def send_notification(config, title, content, tag="broadcast", price_data=None):
     cfg = config.get("notification", {})
     ntype = cfg.get("type", "wxpusher")
 
+    # ── App 消息独立于微信推送：先无条件写入，保证 App 一定收到 ──
+    # （无论后续微信/其他通道推送成功与否，App 都能看到这条播报）
+    save_message_to_app_log(title, content, tag, price_data)
+
     if ntype == "wxpusher":
-        app_token = cfg.get("wxpusher_app_token", "")
-        uids = cfg.get("wxpusher_uids", [])
-        if not app_token or not uids:
-            print("[ERROR] wxpusher_app_token 或 wxpusher_uids 未配置")
-            return False
         content_type = cfg.get("wxpusher_content_type", 2)  # 2=HTML
+
+        # ── SPT 极简推送：无需 appToken / UID，仅用 SPT 即可 ──
+        # 获取方式：微信扫官网二维码（https://wxpusher.zjiecode.com）获取个人 SPT
+        # 二维码图片直链：
+        #   https://wxpusher.zjiecode.com/api/qrcode/RwjGLMOPTYp35zSYQr0HxbCPrV9eU0wKVBXU1D5VVtya0cQXEJWPjqBdW3gKLifS.jpg
+        spt = cfg.get("wxpusher_spt") or os.environ.get("WXPUSHER_SPT", "")
+        if spt:
+            try:
+                r = requests.post(
+                    "https://wxpusher.zjiecode.com/api/send/message/simple-push",
+                    json={
+                        "content": content,
+                        "contentType": content_type,
+                        "summary": title,
+                        "spt": spt,
+                    },
+                    headers={"Content-Type": "application/json"},
+                    timeout=15,
+                )
+                result = r.json()
+                if result.get("code") == 1000:
+                    print("[OK] WxPusher(SPT) 推送成功")
+                    return True
+                print(f"[ERROR] WxPusher(SPT): {result}")
+                return False
+            except Exception as e:
+                print(f"[ERROR] WxPusher(SPT)异常: {e}")
+                return False
+
+        # ── 标准推送：需要 appToken + uids ──
+        # 优先 config；缺失时回退到环境变量（本地自动化注入方式）
+        app_token = cfg.get("wxpusher_app_token") or os.environ.get("WXPUSHER_APP_TOKEN", "")
+        uids = cfg.get("wxpusher_uids") or []
+        if not uids:
+            env_uids = os.environ.get("WXPUSHER_UIDS", "")
+            if env_uids:
+                try:
+                    uids = json.loads(env_uids)
+                except Exception:
+                    # 兼容逗号分隔纯文本: UID_a,UID_b
+                    uids = [u.strip() for u in env_uids.split(",") if u.strip()]
+        if not app_token or not uids:
+            print("[ERROR] WxPusher 未配置：请设置 SPT（推荐，无需 token）"
+                  "或 appToken+UIDS（config.json 或环境变量 WXPUSHER_SPT / "
+                  "WXPUSHER_APP_TOKEN+WXPUSHER_UIDS）")
+            return False
         try:
             r = requests.post(
                 WXPUSHER_API,
@@ -472,7 +549,6 @@ def send_notification(config, title, content, tag="broadcast", price_data=None):
             result = r.json()
             if result.get("code") == 1000:
                 print("[OK] WxPusher 推送成功")
-                save_message_to_app_log(title, content, tag, price_data)
                 return True
             print(f"[ERROR] WxPusher: {result}")
             return False
@@ -494,7 +570,6 @@ def send_notification(config, title, content, tag="broadcast", price_data=None):
             result = r.json()
             if result.get("code") == 200:
                 print("[OK] PushPlus 推送成功")
-                save_message_to_app_log(title, content, tag, price_data)
                 return True
             print(f"[ERROR] PushPlus: {result}")
             return False
@@ -1254,7 +1329,23 @@ def main():
             prev_au, prev_etf, prev_funds, prev_intl, prev_brands,
             selected_brands, is_test=is_test,
         )
-        send_notification(config, title, content)
+
+        # 构造 App 消息的价格卡片数据（安全判空）
+        price_data = {}
+        if au9999 and au9999.get("price") is not None:
+            price_data["au9999"] = {"price": au9999["price"], "change": au9999.get("change")}
+        if intl_spot:
+            price_data["intl_spot"] = {
+                "intl_price": intl_spot.get("intl_price"),
+                "cny_price": intl_spot.get("cny_price"),
+            }
+        if boshi_etf and boshi_etf.get("price") is not None:
+            price_data["boshi_etf"] = {"price": boshi_etf["price"], "change": boshi_etf.get("change")}
+        sel_brand = selected_brands[0] if selected_brands else "周大福"
+        if brand_prices and brand_prices.get(sel_brand) is not None:
+            price_data["brands"] = f"{sel_brand} ¥{brand_prices[sel_brand]}"
+
+        send_notification(config, title, content, price_data=price_data)
     else:
         print("  → 不推送")
 
