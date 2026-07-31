@@ -1,13 +1,6 @@
 {
-  "2026-07-31 15:26": {
-    "intl_spot": {
-      "name": "国际黄金现货",
-      "intl_price": 4075.72,
-      "intl_unit": "美元/盎司",
-      "cny_price": 882.8279,
-      "update_time": "2026-07-31 10:23:00",
-      "prev_close": 4103.84
-    },
+  "2026-07-31 16:00": {
+    "intl_spot": null,
     "au9999": {
       "name": "AU9999",
       "price": 907.08,
@@ -20,8 +13,8 @@
       "code": "159937",
       "price": 8.411,
       "prev_close": 8.344,
-      "change": 0.067,
-      "change_rate": 0.8
+      "change": 0.06700000000000017,
+      "change_rate": 0.8029721955896473
     },
     "gold_funds": {
       "002610": {
