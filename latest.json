@@ -1,20 +1,14 @@
 {
-  "2026-09-11 17:00": {
+  "2026-09-11 18:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4345.82,
+      "intl_price": 4343.39,
       "intl_unit": "美元/盎司",
-      "cny_price": 938.579,
+      "cny_price": 935.2186,
       "update_time": "2026-09-11 15:02:10",
-      "prev_close": 4316.76
+      "prev_close": null
     },
-    "au9999": {
-      "name": "AU9999",
-      "price": 939.54,
-      "prev_close": 952.99,
-      "change": -13.45,
-      "change_rate": -1.41
-    },
+    "au9999": null,
     "boshi_etf": {
       "name": "博时黄金ETF",
       "code": "159937",
