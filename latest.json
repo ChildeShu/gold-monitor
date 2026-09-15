@@ -2,9 +2,9 @@
   "2026-09-15 17:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4266.26,
+      "intl_price": 4269.0,
       "intl_unit": "美元/盎司",
-      "cny_price": 923.6072,
+      "cny_price": 920.9247,
       "update_time": "2026-09-15 15:01:20",
       "prev_close": 4299.15
     },
