@@ -1,16 +1,16 @@
 {
-  "2026-09-25 20:00": {
+  "2026-09-28 14:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4300.51,
+      "intl_price": 4170.6,
       "intl_unit": "美元/盎司",
-      "cny_price": 927.4103,
-      "update_time": "2026-09-24 15:01:20",
-      "prev_close": 4274.71
+      "cny_price": 902.7698,
+      "update_time": "2026-09-28 10:16:20",
+      "prev_close": 4285.37
     },
     "au9999": {
       "name": "AU9999",
-      "price": 947.48,
+      "price": 946.06,
       "prev_close": null,
       "change": null,
       "change_rate": null
@@ -18,80 +18,80 @@
     "boshi_etf": {
       "name": "博时黄金ETF",
       "code": "159937",
-      "price": 8.77,
-      "prev_close": 8.875,
-      "change": -0.10500000000000043,
-      "change_rate": -1.1830985915493006
+      "price": 8.556,
+      "prev_close": 8.77,
+      "change": -0.2140000000000004,
+      "change_rate": -2.4401368301026274
     },
     "gold_funds": {
       "002610": {
         "name": "博时黄金",
         "code": "002610",
         "etf_name": "博时黄金ETF",
-        "etf_price": 8.77,
-        "gold_price": 877.0,
-        "prev_etf_price": 8.875,
-        "prev_gold_price": 887.5,
-        "change": -0.10500000000000043,
-        "change_rate": -1.1830985915493006
+        "etf_price": 8.556,
+        "gold_price": 855.6,
+        "prev_etf_price": 8.77,
+        "prev_gold_price": 877.0,
+        "change": -0.2140000000000004,
+        "change_rate": -2.4401368301026274
       },
       "000216": {
         "name": "华安黄金",
         "code": "000216",
         "etf_name": "华安黄金ETF",
-        "etf_price": 8.788,
-        "gold_price": 878.8,
-        "prev_etf_price": 8.897,
-        "prev_gold_price": 889.7,
-        "change": -0.10899999999999999,
-        "change_rate": -1.2251320669888723
+        "etf_price": 8.575,
+        "gold_price": 857.5,
+        "prev_etf_price": 8.788,
+        "prev_gold_price": 878.8,
+        "change": -0.21300000000000097,
+        "change_rate": -2.423759672280393
       },
       "002963": {
         "name": "易方达黄金",
         "code": "002963",
         "etf_name": "易方达黄金ETF",
-        "etf_price": 9.182,
-        "gold_price": 918.2,
-        "prev_etf_price": 9.297,
-        "prev_gold_price": 929.7,
-        "change": -0.11500000000000021,
-        "change_rate": -1.2369581585457696
+        "etf_price": 8.96,
+        "gold_price": 896.0,
+        "prev_etf_price": 9.182,
+        "prev_gold_price": 918.2,
+        "change": -0.22199999999999953,
+        "change_rate": -2.417773905467213
       },
       "000218": {
         "name": "国泰黄金",
         "code": "000218",
         "etf_name": "国泰黄金ETF",
-        "etf_price": 9.215,
-        "gold_price": 921.5,
-        "prev_etf_price": 9.326,
-        "prev_gold_price": 932.6,
-        "change": -0.11100000000000065,
-        "change_rate": -1.190220887840453
+        "etf_price": 8.99,
+        "gold_price": 899.0,
+        "prev_etf_price": 9.215,
+        "prev_gold_price": 921.5,
+        "change": -0.22499999999999964,
+        "change_rate": -2.441671188279974
       },
       "000929": {
         "name": "博时黄金D",
         "code": "000929",
         "etf_name": "博时黄金ETF",
-        "etf_price": 8.77,
-        "gold_price": 877.0,
-        "prev_etf_price": 8.875,
-        "prev_gold_price": 887.5,
-        "change": -0.10500000000000043,
-        "change_rate": -1.1830985915493006
+        "etf_price": 8.556,
+        "gold_price": 855.6,
+        "prev_etf_price": 8.77,
+        "prev_gold_price": 877.0,
+        "change": -0.2140000000000004,
+        "change_rate": -2.4401368301026274
       }
     },
     "brands": {
-      "菜百首饰": 1285.0,
-      "周六福": 1294.0,
-      "老庙黄金": 1293.0,
-      "老凤祥": 1300.0,
+      "菜百首饰": 1280.0,
+      "周六福": 1287.0,
+      "老庙黄金": 1292.0,
+      "老凤祥": 1292.0,
       "中国黄金": 1293.0,
-      "潮宏基": 1299.0,
-      "金至尊": 1299.0,
-      "谢瑞麟": 1299.0,
-      "六福珠宝": 1297.0,
-      "周生生": 1297.0,
-      "周大福": 1299.0
+      "潮宏基": 1292.0,
+      "金至尊": 1292.0,
+      "谢瑞麟": 1292.0,
+      "六福珠宝": 1290.0,
+      "周生生": 1294.0,
+      "周大福": 1292.0
     }
   }
 }
