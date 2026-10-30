@@ -1,12 +1,12 @@
 {
-  "2026-10-30 14:00": {
+  "2026-10-30 14:59": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 3991.95,
+      "intl_price": 3982.57,
       "intl_unit": "美元/盎司",
       "cny_price": 854.5412,
       "update_time": "2026-10-30 10:16:20",
-      "prev_close": null
+      "prev_close": 4021.39
     },
     "au9999": {
       "name": "AU9999",
@@ -50,23 +50,23 @@
         "name": "易方达黄金",
         "code": "002963",
         "etf_name": "易方达黄金ETF",
-        "etf_price": 8.479,
-        "gold_price": 847.9,
+        "etf_price": 8.477,
+        "gold_price": 847.7,
         "prev_etf_price": 8.593,
         "prev_gold_price": 859.3,
-        "change": -0.11400000000000077,
-        "change_rate": -1.3266612358896865
+        "change": -0.11599999999999966,
+        "change_rate": -1.349935994414054
       },
       "000218": {
         "name": "国泰黄金",
         "code": "000218",
         "etf_name": "国泰黄金ETF",
-        "etf_price": 8.508,
-        "gold_price": 850.8,
+        "etf_price": 8.506,
+        "gold_price": 850.6,
         "prev_etf_price": 8.624,
         "prev_gold_price": 862.4,
-        "change": -0.11600000000000144,
-        "change_rate": -1.3450834879406472
+        "change": -0.11800000000000033,
+        "change_rate": -1.3682745825603007
       },
       "000929": {
         "name": "博时黄金D",
