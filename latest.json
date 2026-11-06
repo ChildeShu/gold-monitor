@@ -1,12 +1,12 @@
 {
-  "2026-11-06 21:00": {
+  "2026-11-06 22:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 4059.55,
+      "intl_price": 4049.24,
       "intl_unit": "美元/盎司",
-      "cny_price": 870.0328,
+      "cny_price": 867.0394,
       "update_time": "2026-11-06 20:00:00",
-      "prev_close": 4089.12
+      "prev_close": null
     },
     "au9999": {
       "name": "AU9999",
