@@ -1,12 +1,12 @@
 {
-  "2026-11-17 01:46": {
+  "2026-11-17 16:00": {
     "intl_spot": {
       "name": "国际黄金现货",
-      "intl_price": 3860.0,
+      "intl_price": 3871.91,
       "intl_unit": "美元/盎司",
-      "cny_price": 825.3486,
-      "update_time": "2026-11-16 20:00:00",
-      "prev_close": 3889.03
+      "cny_price": 829.6739,
+      "update_time": "2026-11-17 15:13:00",
+      "prev_close": 3856.61
     },
     "au9999": {
       "name": "AU9999",
@@ -18,66 +18,66 @@
     "boshi_etf": {
       "name": "博时黄金ETF",
       "code": "159937",
-      "price": 7.834,
-      "prev_close": 7.937,
-      "change": -0.10300000000000065,
-      "change_rate": -1.297719541388442
+      "price": 7.881,
+      "prev_close": 7.834,
+      "change": 0.0470000000000006,
+      "change_rate": 0.5999489405157085
     },
     "gold_funds": {
       "002610": {
         "name": "博时黄金",
         "code": "002610",
         "etf_name": "博时黄金ETF",
-        "etf_price": 7.834,
-        "gold_price": 783.4,
-        "prev_etf_price": 7.937,
-        "prev_gold_price": 793.7,
-        "change": -0.10300000000000065,
-        "change_rate": -1.297719541388442
+        "etf_price": 7.881,
+        "gold_price": 788.1,
+        "prev_etf_price": 7.834,
+        "prev_gold_price": 783.4,
+        "change": 0.0470000000000006,
+        "change_rate": 0.5999489405157085
       },
       "000216": {
         "name": "华安黄金",
         "code": "000216",
         "etf_name": "华安黄金ETF",
-        "etf_price": 7.852,
-        "gold_price": 785.2,
-        "prev_etf_price": 7.954,
-        "prev_gold_price": 795.4,
-        "change": -0.10199999999999942,
-        "change_rate": -1.2823736484787458
+        "etf_price": 7.897,
+        "gold_price": 789.7,
+        "prev_etf_price": 7.852,
+        "prev_gold_price": 785.2,
+        "change": 0.04499999999999993,
+        "change_rate": 0.5731023942944464
       },
       "002963": {
         "name": "易方达黄金",
         "code": "002963",
         "etf_name": "易方达黄金ETF",
-        "etf_price": 8.203,
-        "gold_price": 820.3,
-        "prev_etf_price": 8.31,
-        "prev_gold_price": 831.0,
-        "change": -0.1070000000000011,
-        "change_rate": -1.2876052948255245
+        "etf_price": 8.252,
+        "gold_price": 825.2,
+        "prev_etf_price": 8.203,
+        "prev_gold_price": 820.3,
+        "change": 0.049000000000001265,
+        "change_rate": 0.5973424356942736
       },
       "000218": {
         "name": "国泰黄金",
         "code": "000218",
         "etf_name": "国泰黄金ETF",
-        "etf_price": 8.231,
-        "gold_price": 823.1,
-        "prev_etf_price": 8.341,
-        "prev_gold_price": 834.1,
-        "change": -0.10999999999999943,
-        "change_rate": -1.3187867162210698
+        "etf_price": 8.282,
+        "gold_price": 828.2,
+        "prev_etf_price": 8.231,
+        "prev_gold_price": 823.1,
+        "change": 0.051000000000000156,
+        "change_rate": 0.6196087960150669
       },
       "000929": {
         "name": "博时黄金D",
         "code": "000929",
         "etf_name": "博时黄金ETF",
-        "etf_price": 7.834,
-        "gold_price": 783.4,
-        "prev_etf_price": 7.937,
-        "prev_gold_price": 793.7,
-        "change": -0.10300000000000065,
-        "change_rate": -1.297719541388442
+        "etf_price": 7.881,
+        "gold_price": 788.1,
+        "prev_etf_price": 7.834,
+        "prev_gold_price": 783.4,
+        "change": 0.0470000000000006,
+        "change_rate": 0.5999489405157085
       }
     },
     "brands": {
